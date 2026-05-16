@@ -1,0 +1,1068 @@
+================================================================
+CIPHER — BUILD ROADMAP
+Decode Faster. Win Bigger. Built on Ritual Chain (Testnet)
+================================================================
+Version: 1.0
+Status: Pre-Development
+Chain: Ritual Testnet → Ritual Mainnet
+================================================================
+
+
+================================================================
+ROADMAP OVERVIEW
+================================================================
+
+CIPHER is being built in 4 major phases across an estimated
+16 to 20 weeks from kickoff to Testnet Launch.
+
+  PHASE 0 — Foundation          Week 1  – Week 2
+  PHASE 1 — Smart Contracts     Week 3  – Week 7
+  PHASE 2 — Frontend            Week 8  – Week 13
+  PHASE 3 — Integration & QA    Week 14 – Week 16
+  PHASE 4 — Testnet Launch      Week 17+
+  PHASE 5 — Mainnet Launch      TBD (Ritual Mainnet dependent)
+
+Each phase has clear milestones. Each milestone has a
+definition of done — so there is no ambiguity about when
+something is complete and when to move forward.
+
+================================================================
+PHASE 0 — FOUNDATION
+Weeks 1 to 2
+================================================================
+
+Goal: Lock everything needed before a single line of code
+is written. No development starts until Phase 0 is complete.
+
+----------------------------------------------------------------
+MILESTONE 0.1 — Project Setup
+Week 1
+----------------------------------------------------------------
+
+Deliverables:
+  □ GitHub repository created and made public
+  □ Repository structure defined:
+      /contracts      Smart contract source files
+      /frontend       React frontend application
+      /docs           All documentation files
+      /scripts        Deployment and utility scripts
+      /test           Contract test files
+  □ README.md created with project overview
+  □ All documentation files committed to /docs:
+      - CIPHER_Technical_Documentation_v0.2.txt
+      - CIPHER_System_Architecture_Diagrams.txt
+      - CIPHER_Roadmap.txt (this file)
+  □ Project board created (GitHub Projects or Notion)
+    with all milestones tracked as issues or cards
+  □ Development environment set up locally:
+      - Node.js installed
+      - Hardhat or Foundry installed
+      - Ritual Testnet RPC configured
+      - MetaMask connected to Ritual Testnet
+      - Testnet tokens claimed from Ritual Faucet
+
+Definition of Done:
+  Repository is live, structured, and accessible.
+  Local dev environment runs without errors.
+  All existing documentation is committed and readable.
+
+----------------------------------------------------------------
+MILESTONE 0.2 — Smart Contract Specifications
+Week 2
+----------------------------------------------------------------
+
+Before writing any Solidity, every contract needs a full
+specification document that defines every function, every
+state variable, every event, and every error condition.
+
+Deliverables:
+  □ CipherConfig.sol — full spec written
+      State variables, setter functions, access control
+  □ CipherRanking.sol — full spec written
+      Ranking storage, update logic, tier thresholds,
+      points calculation formula, leaderboard queries
+  □ CipherMatchFactory.sol — full spec written
+      Session code hashing, player pairing logic,
+      match deployment, active match registry
+  □ CipherMatch.sol — full spec written
+      Stake modes, escrow logic, round state machine,
+      Ritual AI precompile call structure,
+      TEE secret word storage and reveal,
+      Ritual scheduler timer registration,
+      guess evaluation, score tracking,
+      winner determination, payout distribution,
+      cancellation and refund logic
+  □ CipherSpectator.sol — full spec written
+      Prediction placement, pool management,
+      payout calculation, distribution on match close
+
+Definition of Done:
+  Every contract has a written spec document.
+  Every function is named, typed, and described.
+  No ambiguity remains about what any contract does.
+  Specs reviewed and approved before Phase 1 begins.
+
+
+================================================================
+PHASE 1 — SMART CONTRACTS
+Weeks 3 to 7
+================================================================
+
+Goal: All 5 CIPHER contracts written, tested, and deployed
+to Ritual Testnet. Ritual AI, TEE, and Scheduler primitives
+integrated and verified working onchain.
+
+----------------------------------------------------------------
+MILESTONE 1.1 — CipherConfig.sol
+Week 3
+----------------------------------------------------------------
+
+Deliverables:
+  □ Contract written in Solidity
+  □ State variables defined:
+      - platformFeePercent (default: 5)
+      - spectatorFeePercent (default: 5)
+      - roundCount (default: 6)
+      - roundDurationSeconds (default: 30)
+      - stakeTimeoutSeconds (timeout for stake confirmation)
+      - minStakeAmount
+      - treasuryAddress
+      - categoryList (array of 10 categories)
+  □ Setter functions with access control (admin only)
+  □ Getter functions (public)
+  □ Admin multisig or owner pattern implemented
+  □ Unit tests written and passing (100% function coverage)
+  □ Deployed to Ritual Testnet
+  □ Contract address noted and committed to /docs
+
+Definition of Done:
+  Contract deployed. All tests passing.
+  Admin can update parameters. Getters return correct values.
+
+----------------------------------------------------------------
+MILESTONE 1.2 — CipherRanking.sol
+Week 3
+----------------------------------------------------------------
+
+Deliverables:
+  □ Contract written in Solidity
+  □ State variables defined:
+      - playerRankings mapping (address => RankData)
+      - RankData struct:
+          totalPoints, tier, wins, losses,
+          totalMatches, tokensEarned
+      - Tier enum: NOVICE, SOLVER, DECODER, CRYPTIC,
+                   CIPHER_ELITE
+      - Tier threshold constants
+  □ Functions implemented:
+      - initializePlayer(address) — first match registration
+      - updateRanking(address winner, address loser,
+                      uint stakeMode) — called by CipherMatch
+      - getPlayerRank(address) — public view
+      - getLeaderboard(uint limit) — returns top N players
+      - getTierThreshold(Tier) — returns point threshold
+      - calculatePointsChange(address winner, address loser,
+                              uint stakeMode) — internal
+  □ Points formula implemented:
+      Win: base 100 + opponent tier bonus + stake bonus
+      Loss: base -80 + opponent tier mitigation
+      Token Match multiplier: +20%
+  □ Tier auto-upgrade and auto-downgrade on point change
+  □ Only CipherMatch.sol can call updateRanking()
+      (access control via authorized callers mapping)
+  □ Unit tests written and passing
+  □ Deployed to Ritual Testnet
+  □ Contract address noted
+
+Definition of Done:
+  Rankings update correctly after simulated match results.
+  Tier changes trigger at correct point thresholds.
+  Leaderboard returns correct ordered results.
+  Unauthorized callers cannot update rankings.
+
+----------------------------------------------------------------
+MILESTONE 1.3 — CipherMatchFactory.sol
+Week 4
+----------------------------------------------------------------
+
+Deliverables:
+  □ Contract written in Solidity
+  □ State variables defined:
+      - activeMatches mapping (bytes32 => address)
+        (hashed session code => CipherMatch address)
+      - pendingPlayers mapping (bytes32 => address)
+        (first player to submit a code waits here)
+      - allMatches array (match history)
+      - matchCount counter
+  □ Functions implemented:
+      - joinMatch(string sessionCode) — player enters code,
+        if first: stored in pending,
+        if second with matching code: match deployed
+      - _deployMatch(address playerA, address playerB,
+                     bytes32 codeHash) — internal
+        deploys new CipherMatch.sol instance
+      - getMatch(bytes32 codeHash) — returns match address
+      - getActiveMatches() — returns all live match addresses
+      - cancelPending(string sessionCode) — player can
+        cancel if opponent never joins (timeout)
+  □ Session code hashed with keccak256 before storage
+      (prevents front-running)
+  □ Timeout: pending slot expires after N minutes
+  □ Events emitted:
+      - MatchPending(bytes32 codeHash, address player)
+      - MatchCreated(bytes32 codeHash, address matchAddress,
+                     address playerA, address playerB)
+      - MatchCancelled(bytes32 codeHash)
+  □ Unit tests written and passing
+  □ Deployed to Ritual Testnet
+  □ Contract address noted
+
+Definition of Done:
+  Two players entering the same session code are
+  automatically paired and a CipherMatch contract is
+  deployed for them. Single player pending state works.
+  Timeout and cancellation work correctly.
+
+----------------------------------------------------------------
+MILESTONE 1.4 — CipherMatch.sol (Core Contract)
+Weeks 4 to 5
+----------------------------------------------------------------
+
+This is the most complex contract. It gets its own two-week
+milestone. All game logic lives here.
+
+Deliverables:
+  □ Contract written in Solidity
+  □ State variables defined:
+      - playerA, playerB addresses
+      - stakeMode enum: FREE, TOKEN, PAID
+      - stakeAmount
+      - playerAStakeConfirmed, playerBStakeConfirmed bools
+      - matchState enum:
+          PENDING_STAKE, ACTIVE, CONCLUDED, CANCELLED
+      - currentRound (1–6, plus tiebreaker)
+      - rounds array (RoundData structs)
+      - RoundData struct:
+          presenter, guesser, category,
+          riddle, sketchDescription,
+          encryptedSecretWord (TEE reference),
+          guess, isCorrect, isClosed
+      - scoreA, scoreB
+      - winner address
+      - matchId
+
+  □ Stake functions:
+      - confirmStake() payable — locks tokens in escrow
+      - _startMatch() internal — fires when both confirmed
+      - cancelMatch() — refunds if stake timeout reached
+
+  □ Round functions:
+      - selectCategory(string category) — Presenter calls
+        triggers Ritual AI precompile call
+      - _generateChallenge(string category) internal
+        calls Ritual AI precompile:
+          input: category + prompt
+          output: riddle + sketchDescription (public)
+                  secretWord (TEE encrypted, private)
+        registers 30s timer with Ritual Scheduler
+      - submitGuess(string guess) — Guesser calls
+        stores guess onchain
+      - closeRound() — called by Ritual Scheduler at 30s
+        decrypts secretWord from TEE
+        evaluates guess (case-insensitive string match)
+        updates score
+        emits RoundClosed event
+        calls _startNextRound() or _concludeMatch()
+
+  □ Match conclusion:
+      - _concludeMatch() internal
+        determines winner by score
+        if tie: deploys tiebreaker round
+        distributes stake to winner (minus platform fee)
+        calls CipherRanking.updateRanking()
+        notifies CipherSpectator.resolveMatch()
+        emits MatchConcluded event
+
+  □ Ritual AI Precompile integration:
+      - Precompile call structured per Ritual docs
+      - confidential: true flag set for secretWord
+      - secretWord stored in TEE, never in public state
+      - riddle and sketchDescription stored in public state
+
+  □ Ritual Autonomous Scheduler integration:
+      - 30-second timer registered per round
+      - closeRound() registered as the callback
+      - Timer fires automatically — no keeper needed
+
+  □ Events emitted:
+      - StakeConfirmed(address player, uint amount)
+      - MatchStarted(address playerA, address playerB)
+      - CategorySelected(uint round, string category)
+      - ChallengeGenerated(uint round, string riddle,
+                           string sketchDescription)
+      - GuessSubmitted(uint round, address guesser)
+      - RoundClosed(uint round, string secretWord,
+                    string guess, bool correct)
+      - MatchConcluded(address winner, uint payout)
+      - MatchCancelled(string reason)
+
+  □ Unit tests written and passing:
+      - Stake flow (both players, mismatch, timeout)
+      - Round flow (category select, challenge gen, guess)
+      - Timer close (simulated scheduler callback)
+      - Score tracking across 6 rounds
+      - Tiebreaker round trigger
+      - Winner payout calculation
+      - Platform fee deduction
+      - CipherRanking.updateRanking() called correctly
+
+  □ Deployed to Ritual Testnet
+  □ Contract address noted
+
+Definition of Done:
+  A full 6-round match can be simulated end to end
+  in tests with correct score tracking, payout, and
+  ranking update. Ritual AI precompile call returns
+  a challenge. TEE stores secret word invisibly.
+  Scheduler fires closeRound() at 30 seconds.
+
+----------------------------------------------------------------
+MILESTONE 1.5 — CipherSpectator.sol
+Week 6
+----------------------------------------------------------------
+
+Deliverables:
+  □ Contract written in Solidity
+  □ State variables defined:
+      - predictions mapping
+        (matchId => address[] predictors)
+      - predictionAmounts mapping
+        (matchId => address => uint)
+      - predictionChoices mapping
+        (matchId => address => address)
+        (spectator => their chosen player)
+      - matchPools mapping
+        (matchId => uint totalPool)
+      - predictionOpen mapping
+        (matchId => bool) — closes before final round
+
+  □ Functions implemented:
+      - watchMatch(uint matchId) — registers spectator
+      - placePrediction(uint matchId, address chosenPlayer)
+        payable — locks tokens, stores prediction
+        reverts if match is in final round or concluded
+      - closePredictions(uint matchId) — called by
+        CipherMatch when final round starts
+      - resolveMatch(uint matchId, address winner) —
+        called by CipherMatch on conclusion
+        identifies correct predictors
+        calculates proportional share of losing pool
+        distributes tokens automatically
+        deducts 5% spectator fee to treasury
+      - getSpectatorCount(uint matchId) — public view
+      - getPredictionPool(uint matchId) — public view
+
+  □ Events emitted:
+      - PredictionPlaced(uint matchId, address spectator,
+                         address chosenPlayer, uint amount)
+      - PredictionsLocked(uint matchId)
+      - PredictionResolved(uint matchId, address spectator,
+                           uint payout)
+
+  □ Only CipherMatch.sol can call resolveMatch()
+      and closePredictions() (access control)
+  □ Unit tests written and passing
+  □ Deployed to Ritual Testnet
+  □ Contract address noted
+
+Definition of Done:
+  Spectators can place predictions on live matches.
+  Predictions lock when final round begins.
+  Correct predictors receive proportional payout
+  automatically when match concludes.
+  Fee deducted correctly to treasury.
+
+----------------------------------------------------------------
+MILESTONE 1.6 — Full Contract Integration Testing
+Week 7
+----------------------------------------------------------------
+
+All 5 contracts now tested together as a complete system.
+
+Deliverables:
+  □ Integration test suite written:
+      - Full AI Mode match (simulated AI opponent)
+      - Full Duel Mode match (two player wallets)
+      - Full Spectator flow on a live Duel match
+      - Free Match end to end
+      - Token Match end to end
+      - Tiebreaker round trigger and resolution
+      - Match cancellation and refund
+      - Ranking update cascade after match
+      - Spectator prediction and payout
+  □ All integration tests passing on Ritual Testnet
+  □ All 5 contract addresses documented in /docs
+  □ ABI files exported and committed to /docs/abis/
+  □ Gas usage reviewed and noted per function
+
+Definition of Done:
+  All integration tests pass on Ritual Testnet.
+  No contract reverts unexpectedly.
+  Payout math verified correct across all scenarios.
+  ABIs ready for frontend consumption.
+
+
+================================================================
+PHASE 2 — FRONTEND
+Weeks 8 to 13
+================================================================
+
+Goal: Full React frontend built, connected to deployed
+contracts on Ritual Testnet, all screens functional,
+all user flows working end to end.
+
+----------------------------------------------------------------
+MILESTONE 2.1 — Project Setup + Wallet Connect
+Week 8
+----------------------------------------------------------------
+
+Deliverables:
+  □ React + Vite project initialized
+  □ Tailwind CSS installed and configured
+  □ shadcn/ui installed and configured
+  □ Framer Motion installed
+  □ wagmi + viem installed and configured
+  □ Ritual Testnet chain config added to wagmi:
+      chainId, RPC URL, block explorer, native currency
+  □ React Router installed, route structure defined:
+      /             Home
+      /lobby        Game Lobby
+      /stake        Stake Mode Selection
+      /match/:id    Live Match Screen
+      /match/:id/result  Match Result
+      /spectate     Live Matches Lobby
+      /spectate/:id Live Spectator View
+      /leaderboard  Global Rankings
+      /profile/:address  Player Profile
+  □ Wallet connect modal working:
+      MetaMask, WalletConnect, Coinbase Wallet
+  □ Network detection: prompts Ritual Testnet switch
+  □ Connected wallet address shown in header
+  □ Player rank badge shown in header
+      (queries CipherRanking.sol on connect)
+  □ Disconnect wallet works correctly
+
+Definition of Done:
+  App runs locally. Wallet connects to Ritual Testnet.
+  Address and rank display in header after connection.
+  All routes accessible (with placeholder content).
+
+----------------------------------------------------------------
+MILESTONE 2.2 — Home Page
+Week 8
+----------------------------------------------------------------
+
+Deliverables:
+  □ Hero section:
+      CIPHER logo and name
+      Tagline: "Decode Faster. Win Bigger."
+      Connect Wallet CTA (if not connected)
+      Play Now CTA (if connected)
+      Built on Ritual badge
+  □ How It Works section (4 steps):
+      1. Connect your wallet
+      2. Challenge your opponent
+      3. Decode the clues
+      4. Win the stake
+  □ Two Modes section:
+      AI Mode card with description
+      Duel Mode card with description
+  □ Live Stats bar:
+      Total matches played (from contract)
+      Total players (from CipherRanking)
+      Total tokens staked (from CipherMatch events)
+  □ Leaderboard preview (top 5 from CipherRanking.sol)
+  □ Footer: Built on Ritual Testnet | CIPHER Protocol
+
+Definition of Done:
+  Home page renders correctly.
+  Live stats pull from contracts.
+  Leaderboard preview shows real data.
+  All CTAs route correctly.
+
+----------------------------------------------------------------
+MILESTONE 2.3 — Game Lobby
+Week 9
+----------------------------------------------------------------
+
+Deliverables:
+  □ Player wallet address shown
+  □ Player rank badge and tier shown
+  □ AI MODE card:
+      Description
+      Difficulty selector (Easy / Medium / Hard)
+        affects AI response speed/accuracy
+      Play Now button → routes to /stake
+  □ DUEL MODE card:
+      Description
+      Session code input field
+      Find Opponent button
+        calls joinMatch(sessionCode) on factory contract
+        shows pending state while waiting for opponent
+        shows Opponent Found when paired
+        routes to /stake when both players confirmed
+  □ Recent match history (last 5 matches):
+      Date, mode, opponent, result, score, tokens
+      Data from CipherMatch events filtered by wallet
+  □ Quick link to /leaderboard
+  □ Waiting state for Duel Mode:
+      "Waiting for opponent to enter code CIPHER99..."
+      Cancel button (calls cancelPending())
+  □ Opponent found state:
+      Shows opponent address and rank
+      Auto-routes to /stake
+
+Definition of Done:
+  AI Mode routes to stake screen correctly.
+  Duel Mode pairs two players via session code.
+  Match history shows real onchain data.
+
+----------------------------------------------------------------
+MILESTONE 2.4 — Stake Mode Selection Screen
+Week 9
+----------------------------------------------------------------
+
+Deliverables:
+  □ Match context shown at top:
+      Mode (AI / Duel), opponent info
+  □ FREE MATCH option:
+      Description: ranking points only, no tokens
+      Select button
+  □ TOKEN MATCH option:
+      Description: stake testnet tokens
+      Token amount input field
+      Min stake shown (from CipherConfig)
+      Link to Ritual Faucet for users with no tokens
+      Select button
+  □ Both players must select same mode:
+      Shows opponent's selection status in Duel Mode
+      "Opponent selected: FREE MATCH" indicator
+  □ Confirm button:
+      FREE: calls confirmStake(0) — no wallet popup
+      TOKEN: calls confirmStake(amount) — wallet signs tx
+             tokens lock in escrow on confirmation
+  □ Waiting state:
+      "Waiting for opponent to confirm stake..."
+  □ Match starts automatically when both confirm:
+      Routes to /match/:matchId
+
+Definition of Done:
+  Free match confirms without token transaction.
+  Token match locks tokens in CipherMatch escrow.
+  Both players must confirm before match starts.
+  Routes to match screen automatically.
+
+----------------------------------------------------------------
+MILESTONE 2.5 — Live Match Screen
+Week 10 to 11
+----------------------------------------------------------------
+
+This is the most complex frontend screen.
+
+Deliverables:
+  □ Match header (always visible):
+      Round counter: Round X of 6
+      Score: Player A X — Player B X
+      Current role: PRESENTER or GUESSER badge
+      Match ID
+      Stake info (Free / X tokens staked)
+
+  □ PRESENTER VIEW:
+      Role label: "Your Role: PRESENTER"
+      Instruction: "Pick a category to challenge your opponent"
+      Category grid (10 categories as clickable cards):
+        Science, Nature, Technology, Objects, Pop Culture,
+        History, Geography, Sports, Food & Drink, Entertainment
+      On category click:
+        calls selectCategory(category) on CipherMatch
+        wallet signs transaction
+        loading state: "Generating challenge..."
+      After challenge generated:
+        Shows: "Challenge sent. Waiting for opponent..."
+        Shows timer counting down (synced to onchain timer)
+        Shows opponent's role: GUESSER
+      After round closes:
+        Shows opponent's guess
+        Shows correct answer
+        Shows round result
+
+  □ GUESSER VIEW:
+      Role label: "Your Role: GUESSER"
+      Category shown: "Category: TECHNOLOGY"
+      Sketch displayed:
+        Rendered from sketchDescription using
+        client-side canvas drawing or AI image call
+      Riddle text displayed (from onchain event)
+      Answer input field (text, enabled immediately)
+      30-second countdown timer:
+        Large, prominent, turns red at 10 seconds
+        Synced to onchain timer start block
+      Submit button:
+        Active while timer running and input not empty
+        On click: calls submitGuess(answer) on CipherMatch
+        Wallet signs transaction
+        Button disabled after submission
+        "Answer submitted. Waiting for round to close..."
+      If timer runs out before submit:
+        Input and button disabled
+        "Time's up!"
+
+  □ ROUND RESULT OVERLAY (after closeRound fires):
+      Appears over the match screen
+      Shows: "The answer was: [SECRET WORD]"
+      Shows: Guesser's answer + correct/wrong indicator
+      Shows: Points update (+1 or +0)
+      Shows: Current score
+      Shows: Role swap for next round
+      Next Round button (or Match Result if final round)
+
+  □ Real-time state sync:
+      Frontend listens to CipherMatch contract events:
+        ChallengeGenerated → update Guesser view
+        GuessSubmitted → update Presenter view
+        RoundClosed → show round result overlay
+        MatchConcluded → route to /match/:id/result
+      Uses wagmi useWatchContractEvent hook
+
+  □ Loading and error states for all contract calls
+  □ Transaction pending indicators
+  □ Mobile responsive layout
+
+Definition of Done:
+  Full round plays from category selection through
+  guess submission through round result display.
+  Timer is accurate and auto-closes the round.
+  Both player views render correctly and update
+  in real time via contract events.
+  Entire 6-round match completes and routes to result.
+
+----------------------------------------------------------------
+MILESTONE 2.6 — Match Result Screen
+Week 11
+----------------------------------------------------------------
+
+Deliverables:
+  □ Final score displayed (large format)
+  □ WIN or LOSE banner with animation
+  □ Winner address highlighted
+  □ Token payout shown (if Token Match):
+      Winner: +X tokens sent to your wallet
+      Loser: -X tokens
+      Platform fee: X tokens to treasury
+  □ Ranking points change shown:
+      +X points (win) or -X points (loss)
+      New total points
+      Rank badge: same or new tier with celebration
+        animation if tier upgraded
+  □ Round by round breakdown table:
+      Round | Presenter | Category | Answer | Result
+  □ Rematch button:
+      Creates new session code, routes to /lobby
+  □ Back to Lobby button
+
+Definition of Done:
+  All match data displays correctly from contract.
+  Token amounts match what was distributed onchain.
+  Ranking delta matches CipherRanking.sol update.
+  Tier upgrade animation triggers when appropriate.
+
+----------------------------------------------------------------
+MILESTONE 2.7 — Spectator Mode Screens
+Week 12
+----------------------------------------------------------------
+
+Deliverables:
+  □ /spectate — Live Matches Lobby:
+      Live match cards showing all active matches
+      Each card:
+        Player A vs Player B (addresses + rank badges)
+        Current round and score
+        Stake type badge (FREE / TOKEN)
+        Stake amount (if Token Match)
+        Spectator count
+        Watch button (Free matches)
+        Watch + Predict button (Token matches)
+      Filter tabs: All / Token Matches / Free Matches
+      Auto-refreshes as new matches start
+
+  □ /spectate/:matchId — Live Spectator View:
+      Live match view (read only):
+        Score, round, timer, category visible
+        Sketch and riddle visible to spectators
+        Round results shown as they happen
+        Real-time updates via contract events
+      Spectator count shown live
+      Prediction panel (if Token Match):
+        Pick a player radio buttons
+          (disabled once prediction placed)
+        Token amount input
+        Potential return calculator:
+          Shows estimated return based on current pool
+          Updates live as more predictions come in
+        Place Prediction button:
+          calls placePrediction(matchId, chosenPlayer)
+          wallet signs transaction
+          tokens locked in CipherSpectator.sol
+        After prediction placed:
+          Shows: "Prediction placed: [player] — 5 tokens"
+          Shows live pool amounts for each player
+        Prediction panel locked after final round starts:
+          Shows: "Predictions are closed"
+      Match result notification:
+        When match concludes:
+          Shows winner
+          Shows prediction result (correct/wrong)
+          Shows tokens received (if correct)
+          "X tokens sent to your wallet"
+
+Definition of Done:
+  Spectators can browse and watch live matches.
+  Predictions place correctly and lock at final round.
+  Payouts appear in UI when match concludes.
+  Real-time updates work via contract events.
+
+----------------------------------------------------------------
+MILESTONE 2.8 — Leaderboard + Player Profile
+Week 13
+----------------------------------------------------------------
+
+Deliverables:
+  □ /leaderboard:
+      Page title: Global Rankings
+      Tier filter tabs:
+        All / CIPHER ELITE / CRYPTIC / DECODER /
+        SOLVER / NOVICE
+      Rankings table:
+        Rank number
+        Wallet address (shortened, copyable)
+        Tier badge with color
+        Total points
+        Win / Loss record
+        Win rate percentage
+        Total tokens earned
+      Current player's row highlighted
+      Data from CipherRanking.getLeaderboard()
+      Pagination (50 per page)
+
+  □ /profile/:walletAddress:
+      Wallet address shown (with copy button)
+      Rank badge and tier name
+      Total points with progress bar to next tier
+      Stats cards:
+        Total Matches | Wins | Losses | Win Rate
+        Total Tokens Earned | Current Streak
+      Match history table:
+        Date | Mode | Opponent | Score | Result | Tokens
+      Rank progression chart:
+        Line chart showing points over time
+        Tier thresholds shown as horizontal lines
+      If own profile: "This is you" indicator
+
+Definition of Done:
+  Leaderboard shows correct ranked data from contract.
+  Tier filter works correctly.
+  Player profile shows complete match history.
+  Rank progression chart renders accurately.
+
+
+================================================================
+PHASE 3 — INTEGRATION & QUALITY ASSURANCE
+Weeks 14 to 16
+================================================================
+
+Goal: Frontend and contracts fully integrated, all user
+flows tested end to end on Ritual Testnet with real wallets,
+all bugs resolved, performance acceptable.
+
+----------------------------------------------------------------
+MILESTONE 3.1 — Full Integration Testing
+Week 14
+----------------------------------------------------------------
+
+Deliverables:
+  □ AI Mode — Free Match — end to end tested:
+      Connect wallet → lobby → stake → match →
+      6 rounds → result → ranking update
+  □ AI Mode — Token Match — end to end tested:
+      Stake locked → match → payout to winner wallet
+  □ Duel Mode — Free Match — end to end tested:
+      Two wallets → session code → paired → match →
+      6 rounds → result
+  □ Duel Mode — Token Match — end to end tested:
+      Both wallets stake → match → payout → ranking
+  □ Duel Mode — Tiebreaker — end to end tested:
+      Match tied at 3-3 → tiebreaker round → winner
+  □ Spectator Mode — end to end tested:
+      Spectator connects → watches Token Match →
+      places prediction → match concludes → payout
+  □ Match cancellation tested:
+      Opponent never joins → timeout → refund
+      Stake mismatch → cancellation → refund
+  □ All contract events reflected in frontend correctly
+  □ All loading and error states handle gracefully
+  □ All transaction failures show user-friendly messages
+
+Definition of Done:
+  All flows complete without errors.
+  Tokens arrive in correct wallets automatically.
+  Rankings update correctly after every match.
+  No unhandled errors or blank states in UI.
+
+----------------------------------------------------------------
+MILESTONE 3.2 — Performance + UX Polish
+Week 15
+----------------------------------------------------------------
+
+Deliverables:
+  □ Transaction signing UX reviewed:
+      Wallet popup appears fast enough during 30s rounds
+      Loading spinners shown during pending transactions
+      Success confirmations shown after transactions
+  □ Timer accuracy reviewed:
+      Frontend timer synced to onchain block time
+      No more than 1-2 second discrepancy acceptable
+  □ Real-time event listening reviewed:
+      Events reflected in UI within 1-2 seconds of firing
+      No missed events under normal conditions
+  □ Framer Motion animations added:
+      Page transitions
+      Round result overlay entrance/exit
+      Score counter animation
+      WIN/LOSE banner animation
+      Rank tier upgrade celebration
+      Token payout notification slide-in
+  □ Mobile responsive layout verified:
+      All screens usable on mobile viewport
+      Match screen timer and input work on mobile
+      Wallet connect works on mobile browsers
+  □ Error states polished:
+      Wrong network message
+      Insufficient balance message
+      Transaction rejected message
+      Opponent disconnected message
+
+Definition of Done:
+  App feels fast and responsive.
+  Animations run smoothly without jank.
+  All error states show clear helpful messages.
+  Mobile experience is usable and complete.
+
+----------------------------------------------------------------
+MILESTONE 3.3 — Security Review + Documentation
+Week 16
+----------------------------------------------------------------
+
+Deliverables:
+  □ Smart contract security review:
+      Reentrancy checks on all payout functions
+      Access control verified on all restricted functions
+      Integer overflow checks (Solidity 0.8+ handles this)
+      Front-running protection on session code pairing
+      TEE secret word never exposed in public state
+      Escrow funds cannot be locked permanently
+        (cancellation and refund paths verified)
+  □ Known limitations documented:
+      Testnet only — no real monetary value
+      Ritual access is limited (by Ritual, not CIPHER)
+      Timer accuracy dependent on block times
+      AI challenge quality subject to model availability
+  □ GitHub README fully written:
+      Project description and tagline
+      Built on Ritual — why Ritual section
+      How to play (user perspective)
+      Smart contract addresses on Ritual Testnet
+      Tech stack
+      How to run locally (setup instructions)
+      How to run tests
+      Known limitations
+      Roadmap link
+      License
+  □ All /docs files up to date and committed
+  □ Contract ABIs verified and committed to /docs/abis/
+
+Definition of Done:
+  No critical security issues identified.
+  All known issues documented honestly.
+  README is complete and readable by a stranger.
+  Project is fully documented and open source.
+
+
+================================================================
+PHASE 4 — TESTNET LAUNCH
+Week 17+
+================================================================
+
+Goal: CIPHER is live on Ritual Testnet and open to real
+users within the Ritual ecosystem.
+
+----------------------------------------------------------------
+MILESTONE 4.1 — Soft Launch
+Week 17
+----------------------------------------------------------------
+
+Deliverables:
+  □ Frontend deployed to Vercel (production URL)
+  □ All contracts live on Ritual Testnet (already deployed)
+  □ Production environment variables set
+  □ Domain configured (if applicable)
+  □ Shared with Ritual community:
+      Ritual Discord announcement
+      Ritual Twitter/X mention
+      Direct outreach to Ritual ecosystem builders
+  □ Faucet link prominently shown in app for new users
+  □ Feedback channel opened (Discord, Telegram, or Form)
+
+Definition of Done:
+  App accessible at production URL.
+  Real users can connect and play.
+  Feedback channel is live and monitored.
+
+----------------------------------------------------------------
+MILESTONE 4.2 — Community Testing Period
+Weeks 17 to 20
+----------------------------------------------------------------
+
+Deliverables:
+  □ Monitor contract events for unexpected behavior
+  □ Monitor frontend error logs
+  □ Collect and categorize user feedback
+  □ Bug triage: critical (fix immediately),
+                major (fix in next update),
+                minor (backlog)
+  □ Weekly updates posted to community
+  □ Leaderboard becomes meaningful as players accumulate
+    real match history and rankings
+  □ First ranked season begins:
+      Season 1 starts at Testnet Launch
+      Season 1 lasts 4 weeks
+      Top 10 players at season end recognized publicly
+
+Definition of Done:
+  At least 50 matches played by real users.
+  No critical bugs outstanding.
+  Leaderboard has real meaningful rankings.
+  Community engagement is active.
+
+----------------------------------------------------------------
+MILESTONE 4.3 — Post-Launch Iteration
+Ongoing after Week 17
+----------------------------------------------------------------
+
+Based on community feedback, potential additions:
+  □ Additional categories (expandable via CipherConfig)
+  □ Dynamic categories via Ritual Internet Access
+  □ Match replay viewer (view completed matches)
+  □ Tournament mode (bracket-style elimination)
+  □ Friend challenges (alternative to session codes)
+  □ Mobile app (React Native port)
+  □ Governance transition for CipherConfig parameters
+
+
+================================================================
+PHASE 5 — MAINNET LAUNCH
+TBD — Dependent on Ritual Mainnet Timeline
+================================================================
+
+Goal: CIPHER moves from Ritual Testnet to Ritual Mainnet
+with real token staking enabled.
+
+----------------------------------------------------------------
+MILESTONE 5.1 — Mainnet Preparation
+(When Ritual Mainnet date is announced)
+----------------------------------------------------------------
+
+Deliverables:
+  □ All contracts audited by a third party
+  □ Any audit findings resolved
+  □ Contracts redeployed to Ritual Mainnet
+  □ Token and fee parameters finalized for real value
+  □ Treasury multisig set up for real fee collection
+  □ Frontend updated to point to Mainnet contracts
+  □ Option C (Paid Match) enabled in CipherConfig
+
+----------------------------------------------------------------
+MILESTONE 5.2 — Mainnet Launch
+----------------------------------------------------------------
+
+Deliverables:
+  □ CIPHER live on Ritual Mainnet
+  □ Real token staking enabled
+  □ First mainnet ranked season launched with prize pool
+  □ Spectator prediction market live with real rewards
+  □ Community governance transition begins for CipherConfig
+  □ Ecosystem grants program opened for category creators
+
+
+================================================================
+SUMMARY TIMELINE
+================================================================
+
+  Week 1   ── Milestone 0.1  Project Setup
+  Week 2   ── Milestone 0.2  Smart Contract Specs
+  Week 3   ── Milestone 1.1  CipherConfig.sol
+             Milestone 1.2  CipherRanking.sol
+  Week 4   ── Milestone 1.3  CipherMatchFactory.sol
+             Milestone 1.4  CipherMatch.sol (start)
+  Week 5   ── Milestone 1.4  CipherMatch.sol (complete)
+  Week 6   ── Milestone 1.5  CipherSpectator.sol
+  Week 7   ── Milestone 1.6  Full Contract Integration Tests
+  Week 8   ── Milestone 2.1  Frontend Setup + Wallet Connect
+             Milestone 2.2  Home Page
+  Week 9   ── Milestone 2.3  Game Lobby
+             Milestone 2.4  Stake Mode Selection
+  Week 10  ── Milestone 2.5  Live Match Screen (start)
+  Week 11  ── Milestone 2.5  Live Match Screen (complete)
+             Milestone 2.6  Match Result Screen
+  Week 12  ── Milestone 2.7  Spectator Mode Screens
+  Week 13  ── Milestone 2.8  Leaderboard + Player Profile
+  Week 14  ── Milestone 3.1  Full Integration Testing
+  Week 15  ── Milestone 3.2  Performance + UX Polish
+  Week 16  ── Milestone 3.3  Security Review + Documentation
+  Week 17  ── Milestone 4.1  Soft Launch on Ritual Testnet
+  Week 17+ ── Milestone 4.2  Community Testing Period
+  Ongoing  ── Milestone 4.3  Post-Launch Iteration
+  TBD      ── Phase 5        Ritual Mainnet Launch
+
+
+================================================================
+DEFINITION OF "DONE" FOR THE ENTIRE PROJECT
+================================================================
+
+CIPHER is considered complete at Testnet Launch when:
+
+  1. All 5 smart contracts are deployed on Ritual Testnet
+  2. All 3 Ritual primitives are integrated and working:
+       Ritual AI Precompile — generating challenges onchain
+       Ritual TEE — keeping secret words confidential
+       Ritual Scheduler — closing rounds automatically
+  3. All 3 game modes are playable end to end:
+       AI Mode (vs the system)
+       Duel Mode (vs another player)
+       Spectator Mode (watch + predict)
+  4. All 3 stake modes work correctly:
+       Free Match (ranking points only)
+       Token Match (testnet tokens, full escrow + payout)
+  5. Rankings are live onchain and meaningful
+  6. Frontend is deployed and accessible at a public URL
+  7. GitHub repository is public with full documentation
+  8. At least one real match has been played by a user
+     who is not the developer
+
+
+================================================================
+END OF ROADMAP
+================================================================
+CIPHER Protocol — Built on Ritual Chain
+"Decode Faster. Win Bigger."
+Roadmap Version 1.0
+================================================================

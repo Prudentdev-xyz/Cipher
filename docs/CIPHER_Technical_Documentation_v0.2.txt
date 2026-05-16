@@ -1,0 +1,638 @@
+================================================================
+CIPHER — TECHNICAL & PRODUCT DOCUMENTATION
+Built on Ritual Chain
+================================================================
+Version: 0.2 — Updated Draft
+Status: Pre-Development | Building on Ritual Testnet
+Chain: Ritual (Testnet)
+----------------------------------------------------------------
+
+
+================================================================
+SECTION 1 — WHAT IS CIPHER?
+================================================================
+
+CIPHER is a competitive onchain brain game where two players
+go head-to-head to decode riddles, visual sketches, and clues
+faster than their opponent — with the option to stake tokens
+on every match.
+
+Every challenge in CIPHER is a coded message. Every round is
+a race to crack it. Every match is proof of who thinks faster.
+
+Tagline: Decode Faster. Win Bigger.
+
+The game is currently being built and tested on Ritual Testnet.
+Ritual is not fully open to the public yet — access is limited
+during this phase. CIPHER is being developed within this window
+intentionally, to ship a working product the moment Ritual
+opens up wider access and eventually launches mainnet.
+
+The game runs entirely on Ritual Chain — meaning the AI that
+generates challenges, the smart contracts that hold stakes, the
+match logic, the rankings, and the rewards are all autonomous,
+verifiable, and onchain. No backend servers. No centralized
+operator. The game runs itself.
+
+
+================================================================
+SECTION 2 — WHY RITUAL?
+================================================================
+
+CIPHER is not a game that can be built properly on a standard
+blockchain. Here is why Ritual is the right infrastructure and
+how each of Ritual's core primitives maps directly to what
+CIPHER needs.
+
+----------------------------------------------------------------
+2.1 Native AI Execution — The Challenge Engine
+----------------------------------------------------------------
+
+Every round of CIPHER requires an AI model to:
+- Receive a category selected by the Presenter
+- Generate a secret word appropriate to that category
+- Generate a riddle clue based on the secret word
+- Generate a sketch or visual description of the secret word
+
+On any other chain, this AI call would have to happen offchain
+through a Web2 API. That means the result cannot be trusted —
+there is no proof that the right model ran, no attestation that
+the output was not tampered with, and no onchain settlement of
+the result within the same transaction.
+
+On Ritual, AI model calls are native precompile operations.
+The prompt goes in. The model runs inside a TEE (Trusted
+Execution Environment). The output — the secret word, the
+riddle, the sketch — is attested and settled onchain in the
+same transaction.
+
+This means every challenge CIPHER generates is:
+- Provably AI-generated (not manually injected)
+- Tamper-proof (no one can swap the answer mid-round)
+- Verifiable by any party on the chain
+
+The challenge generation engine of CIPHER is not a backend
+service. It is a native onchain AI call on Ritual.
+
+----------------------------------------------------------------
+2.2 Confidential Compute — Keeping the Secret Word Hidden
+----------------------------------------------------------------
+
+Every round in CIPHER has a secret word. The Guesser must not
+see it before their guess is submitted. The Presenter must not
+be able to change it after it is generated.
+
+This is a confidentiality problem. On a standard chain, all
+state is public. Anyone can inspect the contract state and
+read the secret word before guessing — breaking the game
+entirely.
+
+Ritual solves this with confidential compute. The secret word
+is generated and stored inside a TEE enclave. It is encrypted
+in a way that only the Ritual execution environment can access
+it during the reveal phase. Neither the Presenter, the Guesser,
+nor any spectator can read the secret word until the round ends
+and the answer is revealed.
+
+This is what makes the game trustless and fair. The secret
+is genuinely secret — enforced by cryptography, not by a
+centralized server promising to behave.
+
+----------------------------------------------------------------
+2.3 Autonomous Scheduling — The Match Timer
+----------------------------------------------------------------
+
+Every round in CIPHER runs on a 30-second timer. When the
+timer expires, the round must close automatically — the Guesser
+either answered correctly or they didn't. No human, no backend
+cron job, and no keeper bot should be needed to trigger this.
+
+On Ritual, autonomous scheduling is native to the block
+proposer. CIPHER registers each round's timer as a scheduled
+execution directly on the chain. When 30 seconds elapse, the
+chain itself closes the round, evaluates the guess, updates
+the score, and moves to the next round automatically.
+
+The match runs itself. As long as both players have confirmed
+their stake mode and the match has started, no operator needs
+to be online for the game to proceed correctly from start to
+finish.
+
+----------------------------------------------------------------
+2.4 Internet Access — Real-Time Data for Categories
+----------------------------------------------------------------
+
+CIPHER's category system can be extended to pull real-world
+data to keep challenges fresh and relevant. For example:
+
+- A "News & Current Events" category that pulls live headlines
+- A "Sports" category that references recent match results
+- A "Trending" category based on what is popular right now
+
+On Ritual, agents can call external APIs directly inside TEEs
+with cryptographic attestation. CIPHER can fetch live data
+from external sources as part of challenge generation — without
+needing a centralized oracle or an offchain data provider that
+introduces a trust assumption.
+
+----------------------------------------------------------------
+2.5 Smart Contract Staking — The Money Layer
+----------------------------------------------------------------
+
+CIPHER is currently building on Ritual Testnet. Ritual is not
+yet open to everyone and testnet tokens carry no real monetary
+value. Because of this, CIPHER's staking system is designed
+with three modes — Free, Testnet Token, and Paid — so that
+anyone who has access to Ritual Testnet can play immediately
+regardless of their token balance.
+
+The staking contract is fully built and functional across all
+three modes. The same escrow logic, payout flow, and
+winner-determination system works identically whether the
+match is free or staked. This means when Ritual moves to
+mainnet and access opens fully, CIPHER's staking system is
+already battle-tested and ready.
+
+STAKE MODE OPTIONS
+------------------
+
+OPTION A — Free Match
+No tokens required from either player. The match contract
+initializes with a zero-value stake. The game runs in full
+— all rounds, all AI challenge generation, all timer logic —
+and the winner is rewarded with ranking points only. This
+mode is open to every wallet on Ritual Testnet with no
+balance requirement whatsoever.
+
+OPTION B — Testnet Token Match
+Both players stake an equal amount of testnet tokens from
+the Ritual Faucet (faucet.ritualfoundation.org). Testnet
+tokens are free to claim and have no real monetary value.
+However, the full staking mechanic applies — tokens are
+locked in escrow, the match runs onchain, and the winner's
+address receives the full pot automatically when the match
+concludes. This mode exists to test and validate the entire
+staking system under real conditions before mainnet.
+
+OPTION C — Paid Match (Mainnet — Coming Later)
+When Ritual launches mainnet and opens access broadly, this
+mode activates. Real tokens with real value are staked.
+The mechanics are identical to Option B — same contracts,
+same flow, same payout logic — but with actual financial
+stakes on the line. Everything built and tested on testnet
+carries over directly.
+
+THE STAKING FLOW (Applies to Options B and C)
+----------------------------------------------
+1. Both players call confirmStake(amount) on the match contract
+2. The contract verifies both amounts are equal
+3. Funds are locked in the match escrow contract
+4. Match runs onchain via Ritual's AI and scheduling primitives
+5. Winner is determined onchain by the score contract
+6. Funds are released to the winner automatically
+7. Platform fee is deducted and sent to the protocol treasury
+
+No human approves the payout. No admin can block it.
+The contract executes and the winner receives their reward.
+
+If either player does not confirm their stake within the
+timeout window, the match is cancelled and any deposited
+funds are returned in full.
+
+
+================================================================
+SECTION 3 — GAME MECHANICS (ONCHAIN MAPPING)
+================================================================
+
+----------------------------------------------------------------
+3.1 Two Ways to Play
+----------------------------------------------------------------
+
+AI MODE
+Players compete against the Ritual-powered AI system to
+practice their skills. The AI acts as both Presenter and
+Guesser opponent. Challenges are generated natively on Ritual
+exactly as they are in Duel Mode. All three stake modes are
+available in AI Mode. Rankings are tracked. This is the
+recommended starting point for new players before entering
+Duel Mode.
+
+DUEL MODE
+Two players compete head-to-head in real time. This is the
+primary competitive format of CIPHER. All three stake modes
+are available. Rankings change based on results. Every move
+is recorded onchain.
+
+----------------------------------------------------------------
+3.2 Connect Wallet — The Entry Point
+----------------------------------------------------------------
+
+CIPHER has no username or password system. A player's wallet
+is their identity on CIPHER. Everything is tied to their
+wallet address — their rank, their match history, their
+staked tokens, and their rewards.
+
+When a user opens CIPHER:
+1. They are presented with a Connect Wallet button
+2. They connect using a Ritual-compatible EVM wallet
+   (MetaMask, WalletConnect, Coinbase Wallet, or any
+   EVM wallet supporting custom RPC networks)
+3. If not already on Ritual Testnet, the app prompts them
+   to switch networks or add Ritual Testnet automatically
+4. Once connected, the app reads their wallet address and
+   queries CipherRanking.sol for their rank and history
+5. They are taken to their dashboard — ready to play
+
+Since Ritual is still in testnet and access is limited,
+players need to have been granted access to the Ritual
+Testnet network. Testnet tokens for staking are available
+free from the Ritual Faucet at faucet.ritualfoundation.org.
+
+Note on Transaction Signing During Matches:
+Every game action that touches the chain — confirming a
+stake, submitting a guess — requires the player to sign
+a transaction from their wallet. Given that rounds are only
+30 seconds long, the frontend UX must handle signing in a
+way that feels fast and does not interrupt the game flow.
+This is a key frontend design consideration for CIPHER.
+
+----------------------------------------------------------------
+3.3 How Two Players Connect
+----------------------------------------------------------------
+
+There are no friend requests or invite links in CIPHER.
+Instead, both players agree on a shared session code before
+entering the app — for example, "BRAIN77."
+
+Both players open CIPHER and enter that same code.
+Both players call the joinMatch(sessionCode) function on
+the CipherMatchFactory contract. The contract pairs them
+automatically when both codes match. The match initializes
+and stake mode selection begins.
+
+The session code is hashed onchain so it cannot be front-run
+or intercepted by a third party attempting to join an
+unintended match.
+
+----------------------------------------------------------------
+3.4 Stake Mode Selection
+----------------------------------------------------------------
+
+Once both players are paired via session code, each player
+selects their preferred stake mode from the three options
+described in Section 2.5.
+
+For the match to proceed:
+- Both players must select the same stake mode
+- If Option B or C is selected, both stake amounts must match
+- Once both players confirm, the match state moves to ACTIVE
+- If stake modes or amounts do not match within the timeout
+  window, the match is cancelled with no penalty to either
+  player
+
+----------------------------------------------------------------
+3.5 Match Structure — Rounds and Roles
+----------------------------------------------------------------
+
+A standard CIPHER match consists of 6 rounds.
+
+Round Structure:
+- Round 1: Player A = Presenter, Player B = Guesser
+- Round 2: Player B = Presenter, Player A = Guesser
+- Roles alternate every round until all 6 rounds complete
+
+Each round:
+1. Presenter selects a category from the available list
+2. Ritual's AI precompile generates: secret word + riddle
+   + sketch description — all in a single onchain call
+3. Secret word is stored in confidential state (TEE encrypted)
+   and is invisible to both players and all spectators
+4. Guesser receives the riddle and the sketch on their screen
+5. 30-second autonomous timer begins via Ritual's scheduler
+6. Guesser types and submits one guess via submitGuess()
+7. Timer expires — round closes automatically onchain
+8. Secret word is revealed to both players
+9. Guess is evaluated onchain — correct or incorrect
+10. Score is updated in the match state contract
+11. Roles swap and the next round begins
+
+Available Categories (Initial Set):
+- Science
+- Nature
+- Technology
+- Objects
+- Pop Culture
+- History
+- Geography
+- Sports
+- Food & Drink
+- Entertainment
+
+Categories are expandable through protocol governance and
+can be supplemented with live data via Ritual's internet
+access primitive for dynamic categories.
+
+----------------------------------------------------------------
+3.6 Winning the Match
+----------------------------------------------------------------
+
+After all 6 rounds are completed:
+- The player with the most correct guesses wins the match
+- In the event of a tie, a sudden-death tiebreaker round
+  runs automatically — one final round, winner takes all
+- The winner's address receives the full staked amount
+  minus the platform fee (for Option B and C matches)
+- Free Match winners receive ranking points only
+- Both players' ranking points are updated onchain
+  immediately after the match concludes
+
+----------------------------------------------------------------
+3.7 Ranking System
+----------------------------------------------------------------
+
+Every wallet address that plays CIPHER has an onchain ranking
+stored in CipherRanking.sol. Rankings persist permanently
+and cannot be reset or manipulated by any operator.
+
+Win = +points (scaled by opponent rank and stake mode)
+Loss = -points (scaled by the same factors)
+
+Ranking Tiers:
+- NOVICE       — Starting tier for all new players
+- SOLVER       — Demonstrated consistent performance
+- DECODER      — Skilled and experienced competitor
+- CRYPTIC      — Elite level, top minority of players
+- CIPHER ELITE — The highest tier, reserved for the best
+
+The top-ranked players across all tiers are visible on a
+public leaderboard queryable directly from the ranking
+contract. Rankings are the same across Free and Token
+matches — every match counts toward your standing.
+
+
+================================================================
+SECTION 4 — SPECTATOR MODE
+================================================================
+
+Anyone can watch a live CIPHER match without playing and
+place a prediction on which player they believe will win.
+
+On testnet, spectator predictions use testnet tokens (free
+from the Ritual Faucet) for Option B matches, and are
+point-based for Free matches. On mainnet, real tokens are
+used for spectator predictions in Paid matches.
+
+Prediction Flow:
+1. Spectator calls watchMatch(matchId) to observe a live game
+2. At any point before the final round begins, the spectator
+   calls placePrediction(matchId, playerAddress, amount)
+3. Prediction amount is locked in the CipherSpectator contract
+4. When the match concludes, winning spectators receive a
+   proportional share of the losing spectators' pool
+5. Funds distribute automatically — no claim needed
+
+Spectator predictions are fully onchain. No centralized
+operator controls the spectator pool. Payouts are automatic.
+
+The spectator system turns every CIPHER match into a live
+event — players compete, spectators predict, and the entire
+economy of a single match is settled trustlessly on Ritual.
+
+
+================================================================
+SECTION 5 — SMART CONTRACT ARCHITECTURE (OVERVIEW)
+================================================================
+
+The CIPHER protocol consists of the following contracts,
+all deployed on Ritual Testnet:
+
+1. CipherMatchFactory.sol
+   - Creates new match instances
+   - Manages session code pairing (hashed for security)
+   - Deploys individual CipherMatch contracts per game
+   - Tracks all active and completed matches
+
+2. CipherMatch.sol
+   - Handles stake mode selection and confirmation
+   - Manages token escrow for Options B and C
+   - Manages round state, role assignment, and score
+   - Calls Ritual AI precompile for challenge generation
+   - Stores secret word in confidential (TEE-encrypted) state
+   - Registers 30-second round timers with Ritual's scheduler
+   - Evaluates submitted guesses against the secret word
+   - Distributes winnings and fees on match completion
+   - Handles cancellation and refund logic
+
+3. CipherRanking.sol
+   - Stores and updates player rankings by wallet address
+   - Calculates ranking point changes per match result
+   - Exposes public leaderboard queries
+   - Maintains permanent onchain rank history per wallet
+
+4. CipherSpectator.sol
+   - Manages spectator prediction pools per match
+   - Locks spectator funds during live matches
+   - Distributes winnings to correct predictors automatically
+   - Links to CipherMatch.sol for result verification
+
+5. CipherConfig.sol
+   - Stores protocol parameters (fees, min stake, round count,
+     timeout windows, category list)
+   - Controlled by admin multisig initially
+   - Designed for transition to community governance over time
+
+
+================================================================
+SECTION 6 — AI CHALLENGE GENERATION (RITUAL PRECOMPILE CALL)
+================================================================
+
+When a Presenter selects a category, CipherMatch.sol makes a
+native AI precompile call on Ritual structured as follows:
+
+Input:
+{
+  "model": "ritual-llm-v1",
+  "prompt": "Generate a secret word, a riddle clue, and a
+             short visual description for the category:
+             [CATEGORY]. Return as JSON with keys:
+             secret_word, riddle, sketch_description.
+             The secret_word should be a single common noun.
+             The riddle should give strong clues without
+             naming the word directly. The sketch_description
+             should describe a simple visual representation
+             of the secret word in under 20 words.",
+  "confidential": true,
+  "max_tokens": 200
+}
+
+The confidential flag ensures the full output is TEE-encrypted
+at the point of generation.
+
+After generation:
+- secret_word is stored in confidential state — invisible
+  to all parties until the round concludes
+- riddle is made available to the Guesser immediately
+- sketch_description is passed to the frontend rendering
+  layer to generate the visual sketch the Guesser sees
+
+Sketch Rendering:
+The sketch_description is used on the frontend to render
+a simple visual clue for the Guesser. This can be achieved
+via a secondary Ritual AI image generation call or via a
+client-side rendering approach using the description as
+a drawing prompt. The exact implementation will be finalized
+during the development phase.
+
+
+================================================================
+SECTION 7 — PLAYER EXPERIENCE FLOW (END TO END)
+================================================================
+
+Step 1  — Player opens CIPHER and clicks Connect Wallet
+Step 2  — Wallet connects to Ritual Testnet
+Step 3  — Player agrees on a session code with opponent offchain
+Step 4  — Both players enter the session code in CIPHER
+Step 5  — Contract pairs them automatically
+Step 6  — Both players select a stake mode (Free / Testnet / Paid)
+Step 7  — Both players confirm their stake (if applicable)
+Step 8  — Match moves to ACTIVE state — game begins
+Step 9  — Round starts: Presenter picks a category
+Step 10 — Ritual AI precompile generates challenge onchain
+Step 11 — Guesser sees the riddle and sketch on their screen
+Step 12 — 30-second timer starts automatically onchain
+Step 13 — Guesser types and submits one answer
+Step 14 — Timer closes the round automatically
+Step 15 — Secret word is revealed to both players
+Step 16 — Guess is evaluated and score updated onchain
+Step 17 — Roles swap and next round begins
+Step 18 — After 6 rounds, winner is determined onchain
+Step 19 — Stake (if any) is released to winner automatically
+Step 20 — Rankings update for both players onchain instantly
+
+
+================================================================
+SECTION 8 — TOKEN AND FEE MODEL
+================================================================
+
+TESTNET PHASE (Current)
+------------------------
+Stake Token: Ritual Testnet Token (no real monetary value)
+Source: Ritual Faucet — faucet.ritualfoundation.org
+Free Match: No tokens required
+Testnet Token Match: Faucet tokens only
+
+Platform Fee: 5% of total token stake per match
+- Applies to Option B (Testnet Token) matches only
+- Deducted automatically from the winning payout
+- Sent to the CIPHER protocol treasury address on testnet
+- On testnet this fee exists to validate the fee mechanism,
+  not to generate real revenue
+
+Spectator Pool Fee: 5% of spectator winnings per match
+- Deducted from the winning spectator pool
+- Sent to the CIPHER protocol treasury
+
+MAINNET PHASE (Future)
+-----------------------
+Stake Token: Native Ritual mainnet token or stablecoin (TBD)
+Platform Fee: 5% of total stake per match (real value)
+Spectator Pool Fee: 5% of spectator winnings per match
+
+Treasury Usage (subject to governance):
+- Protocol development and maintenance
+- Ranking season rewards and prize pools
+- Community grants and ecosystem growth
+- Bug bounty program funding
+
+
+================================================================
+SECTION 9 — WHAT RITUAL ENABLES THAT NOTHING ELSE CAN
+================================================================
+
+To be completely clear about why CIPHER is built on Ritual
+and not on any other chain or offchain system:
+
+CHALLENGE FAIRNESS
+The AI-generated challenge is attested onchain. Neither player
+can claim the challenge was rigged. The proof is on the chain.
+
+SECRET INTEGRITY
+The secret word is genuinely secret until the round ends.
+No frontend hack, no contract inspection, no mempool attack
+can expose it before the Guesser submits their answer.
+
+TIMER AUTONOMY
+The 30-second round timer fires itself. No one needs to send
+a transaction to close a round. The chain does it natively.
+
+TRUSTLESS PAYOUT
+The winner receives their tokens automatically. No admin,
+no withdrawal request, no waiting period. The contract pays.
+
+PERMANENT RANKINGS
+A player's rank is an onchain record tied to their wallet.
+It cannot be deleted, manipulated, or reset by any operator.
+
+SPECTATOR HONESTY
+Spectator predictions and payouts are fully onchain. The house
+cannot rig the prediction market or withhold winnings.
+
+FREE ACCESS WITHOUT SACRIFICING INTEGRITY
+The Free Match mode means anyone on Ritual Testnet can play
+CIPHER with zero token balance — but the game still runs with
+full onchain integrity. The same AI generation, the same
+timer, the same result evaluation. Free to play does not mean
+less trustless.
+
+None of these properties are achievable with a standard chain
+plus offchain AI calls. They require Ritual's native AI
+execution, confidential compute, and autonomous scheduling
+working together as a unified system.
+
+
+================================================================
+SECTION 10 — DEVELOPMENT ROADMAP
+================================================================
+
+PHASE 1 — Protocol Design (Current)
+- Finalize smart contract architecture
+- Define Ritual precompile integration specifics
+- Define token, fee, and stake mode parameters
+- Write full contract specifications
+- Define frontend screens and user flows
+
+PHASE 2 — Development
+- Deploy all CIPHER contracts to Ritual Testnet
+- Integrate Ritual AI precompile for challenge generation
+- Implement confidential compute for secret word storage
+- Implement autonomous scheduling for round timers
+- Build frontend client (web and mobile)
+- Integrate wallet connection for Ritual Testnet
+- Internal playtesting and security review
+
+PHASE 3 — Testnet Launch
+- Open CIPHER to Ritual Testnet users (access-gated by Ritual)
+- Free Match mode available to all testnet users
+- Testnet Token Match mode for users with faucet tokens
+- Community feedback, bug reporting, and iteration
+- Ranking system stress testing across real matches
+- Spectator mode testing and prediction pool validation
+- Leaderboard goes live with real testnet rankings
+
+PHASE 4 — Mainnet Launch
+- Deploy to Ritual Mainnet when access opens broadly
+- Enable Paid Match mode with real token staking
+- Launch first ranked season with prize pool
+- Open spectator prediction market with real rewards
+- Expand category list and introduce dynamic categories
+- Begin community governance transition for CipherConfig
+
+
+================================================================
+END OF DOCUMENT
+================================================================
+CIPHER Protocol — Built on Ritual Chain
+"Decode Faster. Win Bigger."
+Version 0.2 | Ritual Testnet Build
+================================================================
+EOF

@@ -1,0 +1,1200 @@
+================================================================
+CIPHER — SYSTEM ARCHITECTURE & USER FLOW DIAGRAMS
+Decode Faster. Win Bigger. Built on Ritual Chain (Testnet)
+Plain Text / ASCII Structure
+================================================================
+
+
+================================================================
+DIAGRAM 1 — SYSTEM ARCHITECTURE OVERVIEW
+How all layers of CIPHER connect to each other
+================================================================
+
+┌─────────────────────────────────────────────────────────────┐
+│                     USER LAYER                              │
+│                                                             │
+│   ┌─────────────────┐   ┌──────────────┐  ┌─────────────┐  │
+│   │   PLAYER A      │   │   PLAYER B   │  │  SPECTATOR  │  │
+│   │ (Presenter or   │   │ (Guesser or  │  │ (Watcher +  │  │
+│   │  Guesser)       │   │  Presenter)  │  │  Predictor) │  │
+│   └────────┬────────┘   └──────┬───────┘  └──────┬──────┘  │
+└────────────┼───────────────────┼─────────────────┼──────────┘
+             │                   │                 │
+        connects wallet     connects wallet   connects wallet
+        enters session code enters same code  enters match ID
+             │                   │                 │
+             ▼                   ▼                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  LAYER 1 — FRONTEND                         │
+│              (React + Vite + Tailwind + wagmi)              │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │  Home /      │  │  Game Lobby  │  │  Match Screen    │  │
+│  │  Landing     │  │              │  │                  │  │
+│  │  - Hero      │  │  - AI Mode   │  │  - Round timer   │  │
+│  │  - Connect   │  │  - Duel Mode │  │  - Category pick │  │
+│  │    Wallet    │  │  - Session   │  │  - Riddle + Sketch│ │
+│  │  - How it    │  │    Code      │  │  - Guess input   │  │
+│  │    works     │  │  - Stake     │  │  - Score display │  │
+│  │  - Rankings  │  │    Mode pick │  │  - Role indicator│  │
+│  └──────────────┘  └──────────────┘  └──────────────────┘  │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │  Spectator   │  │  Leaderboard │  │  Player Profile  │  │
+│  │  View        │  │              │  │                  │  │
+│  │  - Live match│  │  - All tiers │  │  - Match history │  │
+│  │  - Predict   │  │  - Rankings  │  │  - Win/loss      │  │
+│  │    widget    │  │  - Top 10    │  │  - Rank badge    │  │
+│  │  - Live score│  │    players   │  │  - Earnings      │  │
+│  └──────────────┘  └──────────────┘  └──────────────────┘  │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+          reads contract state + submits transactions
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              LAYER 2 — SMART CONTRACTS                      │
+│                (Deployed on Ritual Testnet)                  │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  CipherMatchFactory.sol                              │   │
+│  │  - Creates match instances                           │   │
+│  │  - Pairs players via hashed session code             │   │
+│  │  - Deploys individual CipherMatch contracts          │   │
+│  └──────────────────────┬─────────────────────────────  │   │
+│                         │ deploys                        │   │
+│                         ▼                               │   │
+│  ┌──────────────────────────────────────────────────┐   │   │
+│  │  CipherMatch.sol                                 │   │   │
+│  │  - Manages stake mode + escrow                   │   │   │
+│  │  - Controls round state and roles                │   │   │
+│  │  - Calls Ritual AI precompile per round          │   │   │
+│  │  - Stores secret word in TEE (confidential)      │   │   │
+│  │  - Registers 30s timer with Ritual scheduler     │   │   │
+│  │  - Evaluates guesses + updates scores            │   │   │
+│  │  - Distributes winnings on match end             │   │   │
+│  └──────────────────────────────────────────────────┘   │   │
+│                                                          │   │
+│  ┌─────────────────────┐  ┌──────────────────────────┐  │   │
+│  │  CipherRanking.sol  │  │  CipherSpectator.sol     │  │   │
+│  │  - Stores rankings  │  │  - Spectator predictions │  │   │
+│  │  - Updates per match│  │  - Locks prediction funds│  │   │
+│  │  - Public leaderboard  - Distributes to winners  │  │   │
+│  └─────────────────────┘  └──────────────────────────┘  │   │
+│                                                          │   │
+│  ┌──────────────────────────────────────────────────┐   │   │
+│  │  CipherConfig.sol                                │   │   │
+│  │  - Fee params, round count, timeout windows      │   │   │
+│  │  - Category list, min stake amounts              │   │   │
+│  └──────────────────────────────────────────────────┘   │   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+              calls Ritual-native primitives
+                           │
+          ┌────────────────┼───────────────────┐
+          │                │                   │
+          ▼                ▼                   ▼
+┌──────────────┐  ┌─────────────────┐  ┌───────────────────┐
+│  RITUAL AI   │  │  RITUAL         │  │  RITUAL           │
+│  PRECOMPILE  │  │  CONFIDENTIAL   │  │  AUTONOMOUS       │
+│              │  │  COMPUTE (TEE)  │  │  SCHEDULER        │
+│  Generates:  │  │                 │  │                   │
+│  - Secret    │  │  Stores and     │  │  Fires round      │
+│    word      │  │  encrypts the   │  │  close at exactly │
+│  - Riddle    │  │  secret word    │  │  30 seconds       │
+│  - Sketch    │  │  until reveal   │  │  automatically    │
+│    description  │                 │  │  No keeper needed │
+└──────────────┘  └─────────────────┘  └───────────────────┘
+
+
+================================================================
+HOW ALL LAYERS TALK TO EACH OTHER
+================================================================
+
+  Frontend (React + wagmi)
+       │
+       │── wallet connect ──────────► Ritual Testnet RPC
+       │── read contract state ─────► CipherMatch.sol
+       │── joinMatch() ─────────────► CipherMatchFactory.sol
+       │── confirmStake() ──────────► CipherMatch.sol
+       │── submitGuess() ───────────► CipherMatch.sol
+       │── watchMatch() ────────────► CipherSpectator.sol
+       │── placePrediction() ───────► CipherSpectator.sol
+       │── getPlayerRank() ─────────► CipherRanking.sol
+       │
+  CipherMatch.sol
+       │
+       │── AI precompile call ──────► Ritual Native AI
+       │── store secret word ───────► Ritual TEE (encrypted)
+       │── register timer ──────────► Ritual Autonomous Scheduler
+       │── release winnings ────────► Winner wallet (automatic)
+       │── update rankings ─────────► CipherRanking.sol
+       │── notify spectators ───────► CipherSpectator.sol
+       │
+  Ritual Autonomous Scheduler
+       │
+       │── fires closeRound() ──────► CipherMatch.sol (at 30s)
+       │── triggers reveal ─────────► TEE decrypts secret word
+       │── evaluates guess ─────────► Score updated onchain
+
+
+================================================================
+DIAGRAM 2 — CONNECT WALLET FLOW
+The entry point for every user on CIPHER
+================================================================
+
+  ┌──────────────────────────────────────────────────────┐
+  │              USER OPENS CIPHER                       │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  Landing page loads                                  │
+  │  User sees hero section + Connect Wallet button      │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  User clicks Connect Wallet                          │
+  │  Wallet selector popup appears                       │
+  │                                                      │
+  │     ┌────────────────────────────────────┐           │
+  │     │  Connect a Wallet                  │           │
+  │     │  ─────────────────────────────     │           │
+  │     │  [ MetaMask              ]         │           │
+  │     │  [ WalletConnect         ]         │           │
+  │     │  [ Coinbase Wallet       ]         │           │
+  │     └────────────────────────────────────┘           │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  User selects wallet and approves connection         │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │                             │
+     Already on Ritual Testnet      Not on Ritual Testnet
+              │                             │
+              │                             ▼
+              │              ┌──────────────────────────┐
+              │              │  App prompts:            │
+              │              │  "Switch to Ritual       │
+              │              │   Testnet to continue"   │
+              │              │                          │
+              │              │  User clicks Switch      │
+              │              │  Wallet adds network     │
+              │              │  automatically           │
+              │              └──────────────┬───────────┘
+              │                             │
+              └──────────────┬──────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  Wallet connected on Ritual Testnet                  │
+  │  App reads wallet address                            │
+  │  App queries CipherRanking.sol for player stats      │
+  │  Header shows: 0x1a2b...3c4d  [NOVICE]               │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  User is taken to Game Lobby                         │
+  │  Ready to choose AI Mode or Duel Mode                │
+  └──────────────────────────────────────────────────────┘
+
+
+================================================================
+DIAGRAM 3 — AI MODE USER FLOW
+Player vs the Ritual AI system
+================================================================
+
+  ┌──────────────────────────────────────────────────────┐
+  │  Player lands on Game Lobby                          │
+  │  Clicks "Play vs AI"                                 │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  STAKE MODE SELECTION                                │
+  │                                                      │
+  │  ┌──────────────────────────────────────────────┐   │
+  │  │  How do you want to play?                    │   │
+  │  │                                              │   │
+  │  │  [ FREE MATCH  ]  No tokens needed           │   │
+  │  │                   Ranking points only        │   │
+  │  │                                              │   │
+  │  │  [ TOKEN MATCH ]  Stake testnet tokens       │   │
+  │  │                   Free from Ritual Faucet    │   │
+  │  └──────────────────────────────────────────────┘   │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │                             │
+          FREE MATCH                  TOKEN MATCH
+              │                             │
+              │                             ▼
+              │              ┌──────────────────────────┐
+              │              │  Enter stake amount      │
+              │              │  Min: 1 testnet token    │
+              │              │                          │
+              │              │  Stake: [ 10 tokens  ]   │
+              │              │                          │
+              │              │  [ Confirm Stake ]       │
+              │              │  Wallet signs transaction│
+              │              │  Tokens locked in escrow │
+              │              └──────────────┬───────────┘
+              │                             │
+              └──────────────┬──────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  Match initializes on Ritual Chain                   │
+  │  CipherMatch.sol deployed for this session           │
+  │  AI opponent assigned by the system                  │
+  │  Match state: ACTIVE                                 │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ╔══════════════════════════════════════════════════════╗
+  ║              ROUND LOOP (6 ROUNDS TOTAL)             ║
+  ╚══════════════════════════════════════════════════════╝
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  ROUND STARTS                                        │
+  │  Role is assigned for this round                     │
+  │                                                      │
+  │  Odd rounds (1,3,5): Player = PRESENTER              │
+  │  Even rounds (2,4,6): Player = GUESSER               │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │                             │
+       PLAYER IS PRESENTER          PLAYER IS GUESSER
+              │                             │
+              ▼                             ▼
+  ┌───────────────────────┐    ┌────────────────────────┐
+  │  Player sees:         │    │  Ritual AI picks       │
+  │  Category selector    │    │  category automatically│
+  │                       │    │  AI = Presenter        │
+  │  [ Science        ]   │    │                        │
+  │  [ Nature         ]   │    │  Ritual AI precompile  │
+  │  [ Technology     ]   │    │  generates:            │
+  │  [ Objects        ]   │    │  - Secret word (hidden)│
+  │  [ Pop Culture    ]   │    │  - Riddle              │
+  │  [ History        ]   │    │  - Sketch description  │
+  │  [ Geography      ]   │    │                        │
+  │  [ Sports         ]   │    │  Player sees riddle    │
+  │  [ Food & Drink   ]   │    │  and sketch on screen  │
+  │  [ Entertainment  ]   │    └──────────┬─────────────┘
+  │                       │               │
+  │  Player selects one   │               │
+  └──────────┬────────────┘               │
+             │                            │
+             ▼                            │
+  ┌───────────────────────┐               │
+  │  Ritual AI precompile │               │
+  │  generates challenge: │               │
+  │                       │               │
+  │  Secret word ─► TEE   │               │
+  │  (encrypted, hidden)  │               │
+  │                       │               │
+  │  Riddle ─► visible    │               │
+  │  to Guesser (AI)      │               │
+  │                       │               │
+  │  Sketch ─► visible    │               │
+  │  to Guesser (AI)      │               │
+  │                       │               │
+  │  AI opponent tries    │               │
+  │  to guess within 30s  │               │
+  └──────────┬────────────┘               │
+             │                            │
+             └──────────────┬─────────────┘
+                            │
+                            ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  30-SECOND TIMER FIRES (Ritual Autonomous Scheduler) │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │                                                │  │
+  │  │  Category: SCIENCE                             │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │  [sketch image displayed here]                 │  │
+  │  │                                                │  │
+  │  │  Riddle: "I hold the code of life inside,      │  │
+  │  │           a twisted ladder, your nature's      │  │
+  │  │           guide."                              │  │
+  │  │                                                │  │
+  │  │  Your Answer: [___________________]            │  │
+  │  │                                                │  │
+  │  │  ⏱  00:24                   [SUBMIT]          │  │
+  │  │                                                │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │                             │
+       ANSWER SUBMITTED                TIMER RUNS OUT
+       before 30 seconds               (no answer)
+              │                             │
+              ▼                             ▼
+  ┌───────────────────────┐    ┌────────────────────────┐
+  │  submitGuess()        │    │  Round closes auto     │
+  │  called onchain       │    │  No guess = wrong      │
+  │  Wallet signs tx      │    │  0 points this round   │
+  └──────────┬────────────┘    └──────────┬─────────────┘
+             │                            │
+             └──────────────┬─────────────┘
+                            │
+                            ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  ROUND CLOSES — Ritual Scheduler fires closeRound()  │
+  │  TEE decrypts and reveals secret word onchain        │
+  │  Guess is evaluated against secret word              │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  The answer was: DNA                           │  │
+  │  │                                                │  │
+  │  │  Your guess: DNA          ✓ CORRECT  +1 point  │  │
+  │  │  AI guess:   Chromosome   ✗ WRONG              │  │
+  │  │                                                │  │
+  │  │  Score: You 1 — AI 0                           │  │
+  │  │                                                │  │
+  │  │  [ Next Round → ]                              │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+               ┌─────────────┴────────────┐
+               │                          │
+        More rounds left           All 6 rounds done
+               │                          │
+               ▼                          ▼
+       Back to ROUND START       MATCH CONCLUSION (below)
+  ╔══════════════════════════════════════════════════════╗
+  ║                END OF ROUND LOOP                     ║
+  ╚══════════════════════════════════════════════════════╝
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  MATCH CONCLUSION                                    │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Match Over                                    │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │  Final Score: You 4 — AI 2                     │  │
+  │  │                                                │  │
+  │  │  🏆 YOU WIN                                    │  │
+  │  │                                                │  │
+  │  │  Tokens won: +10 testnet tokens (if staked)    │  │
+  │  │  Ranking: NOVICE → SOLVER  (+120 points)       │  │
+  │  │                                                │  │
+  │  │  [ Play Again ]    [ Back to Lobby ]           │  │
+  │  └────────────────────────────────────────────────┘  │
+  │                                                      │
+  │  CipherRanking.sol updates player rank onchain       │
+  │  Tokens released to winner wallet automatically      │
+  │  (if Token Match was selected)                       │
+  └──────────────────────────────────────────────────────┘
+
+
+================================================================
+DIAGRAM 4 — DUEL MODE USER FLOW
+Player vs Player — the main competitive format
+================================================================
+
+  TWO PLAYERS (A and B) agree on a session code OFFCHAIN
+  Example code agreed: "CIPHER99"
+
+  ┌─────────────────────────┐   ┌─────────────────────────┐
+  │       PLAYER A          │   │       PLAYER B          │
+  └────────────┬────────────┘   └────────────┬────────────┘
+               │                             │
+               ▼                             ▼
+  ┌────────────────────────┐   ┌─────────────────────────┐
+  │  Opens CIPHER          │   │  Opens CIPHER           │
+  │  Wallet connected      │   │  Wallet connected       │
+  │  Clicks Duel Mode      │   │  Clicks Duel Mode       │
+  └────────────┬───────────┘   └─────────────┬───────────┘
+               │                             │
+               ▼                             ▼
+  ┌────────────────────────┐   ┌─────────────────────────┐
+  │  Enters session code:  │   │  Enters session code:   │
+  │  [ CIPHER99          ] │   │  [ CIPHER99           ] │
+  │                        │   │                         │
+  │  [ Find Opponent ]     │   │  [ Find Opponent ]      │
+  └────────────┬───────────┘   └─────────────┬───────────┘
+               │                             │
+               └──────────────┬──────────────┘
+                              │
+                              ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  CipherMatchFactory.sol receives both joinMatch()    │
+  │  calls with matching hashed session code             │
+  │  Players are paired automatically                    │
+  │  New CipherMatch.sol deployed for this match         │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  BOTH PLAYERS SEE — WAITING ROOM                     │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Opponent Found!                               │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │  You: 0x1a2b...3c4d   [SOLVER]                 │  │
+  │  │  Opponent: 0x9z8y...7x6w  [DECODER]            │  │
+  │  │                                                │  │
+  │  │  Select Stake Mode:                            │  │
+  │  │                                                │  │
+  │  │  ( ) FREE MATCH  — ranking points only         │  │
+  │  │  ( ) TOKEN MATCH — stake testnet tokens        │  │
+  │  │                                                │  │
+  │  │  [ Confirm Selection ]                         │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │                             │
+        BOTH SELECT FREE             BOTH SELECT TOKEN
+              │                             │
+              │                             ▼
+              │              ┌──────────────────────────┐
+              │              │  Both enter stake amount │
+              │              │                          │
+              │              │  Player A: 10 tokens     │
+              │              │  Player B: 10 tokens     │
+              │              │                          │
+              │              │  Amounts must match      │
+              │              │  Both wallets sign tx    │
+              │              │  Tokens locked in escrow │
+              │              └──────────────┬───────────┘
+              │                             │
+              └──────────────┬──────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  Match state moves to ACTIVE                         │
+  │  Both players enter the live match screen            │
+  │  Roles assigned for Round 1                          │
+  │                                                      │
+  │  Player A = PRESENTER (first to present)             │
+  │  Player B = GUESSER   (first to guess)               │
+  │  (determined by wallet address comparison onchain)   │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ╔══════════════════════════════════════════════════════╗
+  ║              ROUND LOOP (6 ROUNDS TOTAL)             ║
+  ╚══════════════════════════════════════════════════════╝
+
+  ─────────────────────────────────────────────────────
+  PLAYER A SCREEN (PRESENTER)    PLAYER B SCREEN (GUESSER)
+  ─────────────────────────────────────────────────────
+
+  ┌──────────────────────┐       ┌──────────────────────┐
+  │  Round 1 of 6        │       │  Round 1 of 6        │
+  │  YOUR ROLE: PRESENTER│       │  YOUR ROLE: GUESSER  │
+  │                      │       │                      │
+  │  Pick a category:    │       │  Waiting for         │
+  │                      │       │  opponent to pick    │
+  │  [ Science        ]  │       │  category...         │
+  │  [ Nature         ]  │       │                      │
+  │  [ Technology     ]  │       │  ⏳                  │
+  │  [ Objects        ]  │       │                      │
+  │  [ Pop Culture    ]  │       │                      │
+  │  [ History        ]  │       │                      │
+  │  [ Geography      ]  │       │                      │
+  │  [ Sports         ]  │       │                      │
+  │  [ Food & Drink   ]  │       │                      │
+  │  [ Entertainment  ]  │       │                      │
+  └──────────┬───────────┘       └──────────────────────┘
+             │
+             │  Player A selects: TECHNOLOGY
+             │
+             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  Ritual AI precompile fires onchain                  │
+  │  Category: TECHNOLOGY                                │
+  │                                                      │
+  │  Generated:                                          │
+  │  secret_word: "SATELLITE"  ──► stored in TEE        │
+  │  riddle: "I orbit above, silent and high,            │
+  │           beaming down signals from the sky"         │
+  │  sketch_description: "A cross-shaped object          │
+  │           with solar panels floating in space"       │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+  ─────────────────────────────────────────────────────
+  PLAYER A SCREEN (PRESENTER)    PLAYER B SCREEN (GUESSER)
+  ─────────────────────────────────────────────────────
+
+  ┌──────────────────────┐       ┌──────────────────────┐
+  │  Round 1 of 6        │       │  Round 1 of 6        │
+  │  YOUR ROLE: PRESENTER│       │  YOUR ROLE: GUESSER  │
+  │                      │       │                      │
+  │  Category: TECHNOLOGY│       │  Category: TECHNOLOGY│
+  │                      │       │                      │
+  │  Challenge sent!     │       │  [sketch of object   │
+  │  Waiting for         │       │   with solar panels  │
+  │  opponent to guess.. │       │   in space]          │
+  │                      │       │                      │
+  │  ⏱  00:24            │       │  "I orbit above,     │
+  │                      │       │  silent and high,    │
+  │  Score:              │       │  beaming down signals│
+  │  You: 0              │       │  from the sky"       │
+  │  Opponent: 0         │       │                      │
+  │                      │       │  Your answer:        │
+  │                      │       │  [______________]    │
+  │                      │       │                      │
+  │                      │       │  ⏱  00:24  [SUBMIT]  │
+  └──────────────────────┘       └──────────┬───────────┘
+                                            │
+                                   Player B types: SATELLITE
+                                   Clicks SUBMIT
+                                            │
+                                            ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  submitGuess("SATELLITE") called on CipherMatch.sol  │
+  │  Player B signs the transaction                      │
+  │  Guess stored onchain                                │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  Timer fires — Ritual Scheduler closes round         │
+  │  TEE decrypts and reveals secret word: SATELLITE     │
+  │  Guess evaluated: "SATELLITE" == "SATELLITE" ✓       │
+  │  Score updated: Player B +1 point                    │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+  ─────────────────────────────────────────────────────
+  BOTH PLAYERS SEE ROUND RESULT
+  ─────────────────────────────────────────────────────
+
+  ┌──────────────────────────────────────────────────────┐
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Round 1 Result                                │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │  The answer was: SATELLITE                     │  │
+  │  │                                                │  │
+  │  │  Player A presented: TECHNOLOGY                │  │
+  │  │  Player B guessed: SATELLITE     ✓ CORRECT     │  │
+  │  │                                                │  │
+  │  │  Score: Player A 0 — Player B 1                │  │
+  │  │                                                │  │
+  │  │  Roles now swap for Round 2                    │  │
+  │  │  Player A = GUESSER  │  Player B = PRESENTER   │  │
+  │  │                                                │  │
+  │  │  [ Continue to Round 2 → ]                     │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+               ┌─────────────┴────────────┐
+               │                          │
+        More rounds left           All 6 rounds done
+               │                          │
+               ▼                          ▼
+       Back to ROUND START       MATCH CONCLUSION (below)
+
+  ╔══════════════════════════════════════════════════════╗
+  ║                END OF ROUND LOOP                     ║
+  ╚══════════════════════════════════════════════════════╝
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  MATCH CONCLUSION — DUEL MODE                        │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Match Over                                    │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │  Final Score:                                  │  │
+  │  │  Player A (You): 2                             │  │
+  │  │  Player B (Opponent): 4                        │  │
+  │  │                                                │  │
+  │  │  🏆 PLAYER B WINS                              │  │
+  │  │                                                │  │
+  │  │  Tokens released: 20 tokens → Player B wallet  │  │
+  │  │  Platform fee (5%): 1 token → Treasury         │  │
+  │  │                                                │  │
+  │  │  Player A ranking: -80 points                  │  │
+  │  │  Player B ranking: +120 points → DECODER tier  │  │
+  │  │                                                │  │
+  │  │  [ Rematch ]    [ Back to Lobby ]              │  │
+  │  └────────────────────────────────────────────────┘  │
+  │                                                      │
+  │  All settled automatically onchain — no admin needed │
+  └──────────────────────────────────────────────────────┘
+
+
+================================================================
+DIAGRAM 5 — SPECTATOR MODE USER FLOW
+Watch live matches and predict the winner
+================================================================
+
+  ┌──────────────────────────────────────────────────────┐
+  │  SPECTATOR lands on CIPHER                           │
+  │  Connects wallet                                     │
+  │  Clicks "Watch Live Matches"                         │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  LIVE MATCHES LOBBY                                  │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Live Now (3 matches)                          │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │                                                │  │
+  │  │  Match #1042                                   │  │
+  │  │  0x1a2b... [DECODER] vs 0x9z8y... [CRYPTIC]   │  │
+  │  │  Round 3 of 6  |  Score: 1 — 2                 │  │
+  │  │  Stake: 50 tokens  |  Spectators: 14            │  │
+  │  │  [ Watch + Predict ]                           │  │
+  │  │                                                │  │
+  │  │  Match #1041                                   │  │
+  │  │  0x3c4d... [SOLVER] vs 0x5e6f... [SOLVER]     │  │
+  │  │  Round 1 of 6  |  Score: 0 — 0                 │  │
+  │  │  FREE Match  |  Spectators: 3                  │  │
+  │  │  [ Watch ]                                     │  │
+  │  │                                                │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                    Clicks Watch + Predict
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  SPECTATOR MATCH VIEW                                │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Match #1042  —  LIVE                          │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │                                                │  │
+  │  │  0x1a2b... [DECODER]  1 — 2  0x9z8y... [CRYPTIC]│
+  │  │                                                │  │
+  │  │  Round 3 of 6  |  GUESSER: 0x9z8y...          │  │
+  │  │  Category: POP CULTURE                         │  │
+  │  │  ⏱  00:18 remaining                           │  │
+  │  │                                                │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │  MAKE YOUR PREDICTION                          │  │
+  │  │                                                │  │
+  │  │  Who do you think will win?                    │  │
+  │  │                                                │  │
+  │  │  ( ) 0x1a2b... [DECODER]                       │  │
+  │  │  ( ) 0x9z8y... [CRYPTIC]                       │  │
+  │  │                                                │  │
+  │  │  Predict amount: [ 5 tokens ]                  │  │
+  │  │                                                │  │
+  │  │  Potential return if correct: ~9.5 tokens      │  │
+  │  │                                                │  │
+  │  │  [ Place Prediction ]                          │  │
+  │  │  (disabled after final round starts)           │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+              Clicks Place Prediction
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  placePrediction(matchId, playerAddress, amount)     │
+  │  called on CipherSpectator.sol                       │
+  │  Spectator wallet signs transaction                  │
+  │  5 tokens locked in the spectator prediction pool    │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  SPECTATOR CONTINUES WATCHING LIVE                   │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Match #1042  —  LIVE                          │  │
+  │  │                                                │  │
+  │  │  Round 4 of 6  |  Score: 2 — 2                 │  │
+  │  │  Your prediction: 0x9z8y... [CRYPTIC]  ✓ 5 tok │  │
+  │  │                                                │  │
+  │  │  Round 5 of 6  |  Score: 3 — 2                 │  │
+  │  │                                                │  │
+  │  │  Round 6 of 6  |  Score: 3 — 3  ← TIE!        │  │
+  │  │  TIEBREAKER ROUND STARTING...                  │  │
+  │  │                                                │  │
+  │  │  TIEBREAKER  |  Score: 3 — 4                   │  │
+  │  │  🏆 0x9z8y... [CRYPTIC] WINS                   │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────┬───────────────────────────┘
+                             │
+                             ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  MATCH CONCLUDES — CipherSpectator.sol evaluates     │
+  │                                                      │
+  │  Winner: 0x9z8y... [CRYPTIC]                         │
+  │                                                      │
+  │  Spectator predicted: 0x9z8y... ✓ CORRECT           │
+  │                                                      │
+  │  Total prediction pool: 80 tokens                    │
+  │  Winning pool: 45 tokens                             │
+  │  Losing pool: 35 tokens                              │
+  │                                                      │
+  │  Spectator's share: 35 × (5/45) = ~3.9 tokens       │
+  │  Spectator receives: 5 + 3.9 = 8.9 tokens           │
+  │  (minus 5% fee = ~8.5 tokens net)                    │
+  │                                                      │
+  │  Tokens distributed automatically to winner wallets  │
+  │  No claim button. No waiting. It just arrives.       │
+  │                                                      │
+  │  ┌────────────────────────────────────────────────┐  │
+  │  │  Match #1042 — FINISHED                        │  │
+  │  │  ─────────────────────────────────────────     │  │
+  │  │  🏆 0x9z8y... [CRYPTIC] won the match          │  │
+  │  │                                                │  │
+  │  │  Your prediction: CORRECT ✓                    │  │
+  │  │  Tokens returned: +8.5 tokens to your wallet   │  │
+  │  │                                                │  │
+  │  │  [ Watch Another Match ]  [ Back to Lobby ]    │  │
+  │  └────────────────────────────────────────────────┘  │
+  └──────────────────────────────────────────────────────┘
+
+
+================================================================
+DIAGRAM 6 — FULL PAYMENT FLOW
+How tokens move through CIPHER for all three modes
+================================================================
+
+  FREE MATCH
+  ──────────────────────────────────────────────────────
+  Player A ──── no tokens ────────────────► Match starts
+  Player B ──── no tokens ────────────────► Match starts
+  Winner   ◄─── ranking points only ──────  CipherRanking.sol
+  Loser    ◄─── ranking points deducted ──  CipherRanking.sol
+
+
+  TOKEN MATCH (Testnet)
+  ──────────────────────────────────────────────────────
+  Player A ──── 10 tokens ──► CipherMatch.sol (escrow)
+  Player B ──── 10 tokens ──► CipherMatch.sol (escrow)
+                                      │
+                              Match runs onchain
+                                      │
+                         Winner determined onchain
+                                      │
+              ┌───────────────────────┤
+              │                       │
+              ▼                       ▼
+  Winner wallet ◄── 19 tokens    Treasury ◄── 1 token
+  (95% of pot)                   (5% platform fee)
+  Automatic. No approval.        CipherConfig.sol address
+
+
+  SPECTATOR PREDICTION (Token Match only)
+  ──────────────────────────────────────────────────────
+  Spectator A ─ 5 tokens ─► CipherSpectator.sol (pool)
+  Spectator B ─ 5 tokens ─► CipherSpectator.sol (pool)
+  Spectator C ─ 10 tokens ► CipherSpectator.sol (pool)
+  Total pool: 20 tokens
+                                      │
+                              Match concludes
+                                      │
+                         Correct predictors identified
+                                      │
+              ┌───────────────────────┤
+              │                       │
+              ▼                       ▼
+  Winning spectators          Treasury ◄── 5% fee
+  get proportional share      of spectator winnings
+  of losing pool + their
+  stake back (minus fee)
+  All automatic. Onchain.
+
+
+================================================================
+DIAGRAM 7 — RANKING SYSTEM FLOW
+How ranks change after every match
+================================================================
+
+  RANKING TIERS (lowest to highest)
+  ──────────────────────────────────────────────────────
+
+  ┌──────────────────────────────────────────────────┐
+  │                                                  │
+  │   NOVICE        ──── Starting tier (all new)     │
+  │      │                                           │
+  │      ▼                                           │
+  │   SOLVER        ──── Consistent performer        │
+  │      │                                           │
+  │      ▼                                           │
+  │   DECODER       ──── Skilled and experienced     │
+  │      │                                           │
+  │      ▼                                           │
+  │   CRYPTIC       ──── Elite level competitor      │
+  │      │                                           │
+  │      ▼                                           │
+  │   CIPHER ELITE  ──── Top tier, the very best     │
+  │                                                  │
+  └──────────────────────────────────────────────────┘
+
+  POINTS CALCULATION
+  ──────────────────────────────────────────────────────
+
+  After every match, CipherRanking.sol calculates:
+
+  WIN points = base 100 + opponent_rank_bonus + stake_bonus
+  LOSS points = base -80 + opponent_rank_mitigation
+
+  Examples:
+  NOVICE beats NOVICE    ──► +100 points
+  NOVICE beats DECODER   ──► +180 points (big upset bonus)
+  DECODER beats NOVICE   ──► +50 points (smaller gain)
+  CRYPTIC beats NOVICE   ──► +20 points (minimal gain)
+  NOVICE loses to NOVICE ──► -80 points
+  CRYPTIC loses to NOVICE ──► -150 points (big penalty)
+
+  Token Match bonus: +20% to all point calculations
+  Free Match: base calculation only
+
+  TIER THRESHOLDS (subject to governance)
+  ──────────────────────────────────────────────────────
+  0      – 999   points  ──► NOVICE
+  1,000  – 2,999 points  ──► SOLVER
+  3,000  – 5,999 points  ──► DECODER
+  6,000  – 9,999 points  ──► CRYPTIC
+  10,000+        points  ──► CIPHER ELITE
+
+
+================================================================
+DIAGRAM 8 — ALL FRONTEND SCREENS
+Every page in CIPHER and what lives on it
+================================================================
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /                       Home / Landing Page            │
+  │                                                         │
+  │  - Hero: "Decode Faster. Win Bigger."                   │
+  │  - Connect Wallet button (top right)                    │
+  │  - How it works — 4 step breakdown                      │
+  │  - Two modes section: AI Mode vs Duel Mode              │
+  │  - Live stats: total matches, players, tokens staked    │
+  │  - Leaderboard preview (top 5 players)                  │
+  │  - Call to action: Play Now button                      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /lobby                   Game Lobby                    │
+  │                                                         │
+  │  - Player's wallet address + rank badge shown           │
+  │  - Two mode cards:                                      │
+  │      AI MODE card:                                      │
+  │        Description, difficulty selector, Play Now btn   │
+  │      DUEL MODE card:                                    │
+  │        Description, session code input, Find Match btn  │
+  │  - Recent matches history (last 5 matches)              │
+  │  - Quick link to Leaderboard                            │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /stake                   Stake Mode Selection          │
+  │                                                         │
+  │  - Match type shown (AI Mode or Duel Mode)              │
+  │  - Opponent info shown (AI or player address)           │
+  │  - Three stake mode options:                            │
+  │      FREE MATCH: 0 tokens, ranking only                 │
+  │      TOKEN MATCH: input field for token amount          │
+  │      (Testnet tokens from Ritual Faucet)                │
+  │  - Confirm button (triggers wallet transaction)         │
+  │  - Link to Ritual Faucet for users with no tokens       │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /match/:matchId          Live Match Screen             │
+  │                                                         │
+  │  Header:                                                │
+  │  - Round counter (Round X of 6)                         │
+  │  - Current score (Player A : Player B)                  │
+  │  - Current role (PRESENTER or GUESSER)                  │
+  │  - Match ID                                             │
+  │                                                         │
+  │  PRESENTER VIEW:                                        │
+  │  - Category selection grid (10 categories)              │
+  │  - Waiting state after category selected                │
+  │  - Timer visible (countdown)                            │
+  │  - Opponent's guess revealed after round closes         │
+  │                                                         │
+  │  GUESSER VIEW:                                          │
+  │  - Sketch displayed (generated from AI description)     │
+  │  - Riddle text displayed                                │
+  │  - Answer input field                                   │
+  │  - 30-second countdown timer (prominent)               │
+  │  - Submit button                                        │
+  │                                                         │
+  │  ROUND RESULT OVERLAY (after each round):               │
+  │  - Secret word revealed                                 │
+  │  - Correct/wrong indicator                              │
+  │  - Score update animation                               │
+  │  - Next round button                                    │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /match/:matchId/result   Match Result Screen           │
+  │                                                         │
+  │  - Final score displayed (large)                        │
+  │  - WIN or LOSE banner                                   │
+  │  - Tokens won/lost (if Token Match)                     │
+  │  - Ranking points gained/lost                           │
+  │  - New rank badge (if tier changed)                     │
+  │  - Round by round breakdown                             │
+  │  - Rematch button                                       │
+  │  - Back to Lobby button                                 │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /spectate                Live Matches Lobby            │
+  │                                                         │
+  │  - List of all live matches                             │
+  │  - Each match card shows:                               │
+  │      Player A vs Player B                               │
+  │      Current round and score                            │
+  │      Stake type and amount                              │
+  │      Number of spectators watching                      │
+  │      Watch + Predict button                             │
+  │  - Filter: Token Matches only / Free Matches / All      │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /spectate/:matchId       Live Spectator View           │
+  │                                                         │
+  │  - Real-time match view (read only)                     │
+  │  - Score and round tracker                              │
+  │  - Current round category shown                         │
+  │  - Timer visible                                        │
+  │  - Sketch and riddle visible to spectators              │
+  │  - Prediction panel (right side):                       │
+  │      Pick a player to win                               │
+  │      Enter token amount                                 │
+  │      Potential return calculator                        │
+  │      Place Prediction button                            │
+  │      (Locked after final round starts)                  │
+  │  - Live spectator count                                 │
+  │  - Match result shown when match concludes              │
+  │  - Winnings distributed notification                    │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /leaderboard             Global Rankings Page          │
+  │                                                         │
+  │  - Rank filter tabs: All / CIPHER ELITE / CRYPTIC /     │
+  │    DECODER / SOLVER / NOVICE                            │
+  │  - Ranked table:                                        │
+  │      Rank number                                        │
+  │      Wallet address (shortened)                         │
+  │      Tier badge                                         │
+  │      Total points                                       │
+  │      Win/loss record                                    │
+  │      Total tokens earned                                │
+  │  - Current player's rank highlighted                    │
+  │  - Data pulled live from CipherRanking.sol              │
+  └─────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────┐
+  │  /profile/:walletAddress  Player Profile Page           │
+  │                                                         │
+  │  - Wallet address                                       │
+  │  - Rank badge and tier                                  │
+  │  - Total points                                         │
+  │  - Win / Loss / Total matches stats                     │
+  │  - Tokens earned (Token Matches total)                  │
+  │  - Match history table:                                 │
+  │      Date, mode (AI/Duel), result, score, tokens        │
+  │  - Rank progression chart                               │
+  └─────────────────────────────────────────────────────────┘
+
+
+================================================================
+DIAGRAM 9 — TECH STACK
+Every tool used in CIPHER and what it does
+================================================================
+
+  FRONTEND
+  ┌──────────────────────────────────────────────────────┐
+  │  React + Vite          App framework and build tool  │
+  │  React Router          Page routing (/lobby, etc.)   │
+  │  Tailwind CSS          All styling and layout        │
+  │  shadcn/ui             Pre-built UI components       │
+  │  Framer Motion         Animations and transitions    │
+  │  wagmi + viem          Wallet connect + contract     │
+  │                        interaction for EVM/Ritual    │
+  └──────────────────────────────────────────────────────┘
+
+  SMART CONTRACTS
+  ┌──────────────────────────────────────────────────────┐
+  │  Solidity              Contract language             │
+  │  Hardhat / Foundry     Dev and testing environment   │
+  │  CipherMatchFactory    Match creation + pairing      │
+  │  CipherMatch           Core game logic per match     │
+  │  CipherRanking         Onchain ranking system        │
+  │  CipherSpectator       Spectator prediction pool     │
+  │  CipherConfig          Protocol parameters           │
+  └──────────────────────────────────────────────────────┘
+
+  RITUAL CHAIN PRIMITIVES
+  ┌──────────────────────────────────────────────────────┐
+  │  Ritual AI Precompile  Native onchain AI execution   │
+  │  Ritual TEE            Confidential compute for      │
+  │                        secret word storage           │
+  │  Ritual Scheduler      Autonomous 30s round timers   │
+  │  Ritual Internet       External API access (future   │
+  │  Access                dynamic categories)           │
+  └──────────────────────────────────────────────────────┘
+
+  DEPLOYMENT
+  ┌──────────────────────────────────────────────────────┐
+  │  Ritual Testnet        Smart contract deployment     │
+  │  Vercel                Frontend deployment           │
+  │  GitHub                Source code + open source     │
+  └──────────────────────────────────────────────────────┘
+
+
+================================================================
+DIAGRAM 10 — BUILD ORDER
+The exact sequence to build CIPHER phase by phase
+================================================================
+
+  PHASE 1 — Project Setup
+  ┌─────────────────────────────────────────────────────┐
+  │  Create React + Vite project                        │
+  │  Install Tailwind CSS + shadcn/ui                   │
+  │  Install wagmi + viem for wallet connect            │
+  │  Set up folder structure                            │
+  │  Push to GitHub                                     │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 2 — Smart Contract Development
+  ┌─────────────────────────────────────────────────────┐
+  │  Set up Hardhat or Foundry project                  │
+  │  Write CipherConfig.sol                             │
+  │  Write CipherRanking.sol                            │
+  │  Write CipherMatchFactory.sol                       │
+  │  Write CipherMatch.sol (core game logic)            │
+  │  Write CipherSpectator.sol                          │
+  │  Write unit tests for all contracts                 │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 3 — Deploy Contracts to Ritual Testnet
+  ┌─────────────────────────────────────────────────────┐
+  │  Configure Ritual Testnet RPC in Hardhat/Foundry    │
+  │  Deploy all 5 contracts to Ritual Testnet           │
+  │  Note all contract addresses                        │
+  │  Verify contracts on Ritual explorer                │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 4 — Ritual AI Precompile Integration
+  ┌─────────────────────────────────────────────────────┐
+  │  Integrate Ritual AI precompile in CipherMatch.sol  │
+  │  Test challenge generation onchain                  │
+  │  Verify TEE encryption of secret word               │
+  │  Test secret word reveal after round closes         │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 5 — Ritual Scheduler Integration
+  ┌─────────────────────────────────────────────────────┐
+  │  Integrate autonomous scheduler in CipherMatch.sol  │
+  │  Register 30-second round timers                    │
+  │  Test timer-triggered round close                   │
+  │  Verify no keeper bot needed                        │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 6 — Frontend Home + Wallet Connect
+  ┌─────────────────────────────────────────────────────┐
+  │  Build landing page (/)                             │
+  │  Connect Wallet button with wagmi                   │
+  │  Ritual Testnet network detection + switch prompt   │
+  │  Display wallet address + rank in header            │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 7 — Lobby + Stake Screen
+  ┌─────────────────────────────────────────────────────┐
+  │  Build Game Lobby (/lobby)                          │
+  │  AI Mode and Duel Mode cards                        │
+  │  Session code input for Duel Mode                   │
+  │  Build Stake Mode Selection (/stake)                │
+  │  Wire stake confirmation to CipherMatch.sol         │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 8 — Live Match Screen
+  ┌─────────────────────────────────────────────────────┐
+  │  Build match screen (/match/:matchId)               │
+  │  Presenter view — category selector                 │
+  │  Guesser view — sketch + riddle + input             │
+  │  Live 30-second countdown timer on frontend         │
+  │  submitGuess() wired to CipherMatch.sol             │
+  │  Round result overlay after each round              │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 9 — Match Result Screen
+  ┌─────────────────────────────────────────────────────┐
+  │  Build match result screen (/match/:matchId/result) │
+  │  Display winner, final score, tokens, ranking delta │
+  │  Rematch and back to lobby buttons                  │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 10 — AI Mode Full Integration
+  ┌─────────────────────────────────────────────────────┐
+  │  Wire AI opponent logic to Ritual AI precompile     │
+  │  AI picks category and guesses automatically        │
+  │  Test full AI Mode match end to end                 │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 11 — Spectator Mode
+  ┌─────────────────────────────────────────────────────┐
+  │  Build live matches lobby (/spectate)               │
+  │  Build spectator match view (/spectate/:matchId)    │
+  │  Wire prediction placement to CipherSpectator.sol   │
+  │  Wire payout distribution on match close            │
+  │  Test prediction flow end to end                    │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 12 — Leaderboard + Profile
+  ┌─────────────────────────────────────────────────────┐
+  │  Build leaderboard (/leaderboard)                   │
+  │  Read rankings live from CipherRanking.sol          │
+  │  Build player profile (/profile/:walletAddress)     │
+  │  Display match history and rank progression         │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 13 — Polish + Animations
+  ┌─────────────────────────────────────────────────────┐
+  │  Framer Motion on all screens                       │
+  │  Round result animations                            │
+  │  Token payout notification animations               │
+  │  Rank up celebration animation                      │
+  │  Loading states for all contract calls              │
+  └─────────────────────┬───────────────────────────────┘
+                        │
+                        ▼
+  PHASE 14 — Testing + Deploy
+  ┌─────────────────────────────────────────────────────┐
+  │  Full end to end test: AI Mode                      │
+  │  Full end to end test: Duel Mode                    │
+  │  Full end to end test: Spectator Mode               │
+  │  All three stake modes tested                       │
+  │  Deploy frontend to Vercel                          │
+  │  Write full README on GitHub                        │
+  └─────────────────────────────────────────────────────┘
+
+
+================================================================
+END — CIPHER SYSTEM ARCHITECTURE & USER FLOW DIAGRAMS
+Decode Faster. Win Bigger. Built on Ritual Chain (Testnet)
+Version 0.2
+================================================================
